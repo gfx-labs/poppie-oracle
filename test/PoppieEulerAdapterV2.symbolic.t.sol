@@ -1,0 +1,85 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.24;
+
+import {Test} from "forge-std/Test.sol";
+import {PoppieEulerOracleV2} from "../src/PoppieEulerOracleV2.sol";
+import {PoppieEulerAdapterV2} from "../src/PoppieEulerAdapterV2.sol";
+import {MockERC20} from "./mocks/MockERC20.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+
+/// @title PoppieEulerAdapterV2SymbolicTest
+/// @notice Halmos symbolic spec for the V2 adapter's decimal-scaling math.
+///         Run with:  halmos --match-contract PoppieEulerAdapterV2SymbolicTest
+///
+///         Proves getQuote equals the Math.mulDiv reference for fixed decimal
+///         layouts over ALL symbolic inAmount/price. Concretizing the decimals
+///         keeps 10**exp constant so the SMT problem stays tractable.
+contract PoppieEulerAdapterV2SymbolicTest is Test {
+    PoppieEulerOracleV2 oracle;
+    address admin = address(0xAD);
+    address keeper = address(0xBE);
+    address aAdmin = address(0xA1);
+    address constant UNIT = address(840);
+
+    function setUp() public {
+        oracle = new PoppieEulerOracleV2(admin, keeper, 0); // 0 => no staleness guard in proof
+    }
+
+    function _setup(uint8 baseDec, uint8 uoaDec, int256 price18)
+        internal
+        returns (PoppieEulerAdapterV2 adapter, MockERC20 token)
+    {
+        token = new MockERC20("T", "T", baseDec);
+        adapter = new PoppieEulerAdapterV2(address(oracle), aAdmin, UNIT, uoaDec);
+
+        address[] memory a = new address[](1);
+        uint256[] memory t = new uint256[](1);
+        a[0] = address(token);
+        t[0] = 0; // disable circuit breaker for arbitrary symbolic price
+        vm.prank(admin);
+        oracle.configureAssets(a, t);
+
+        vm.prank(aAdmin);
+        adapter.registerBase(address(token));
+
+        int256[] memory p = new int256[](1);
+        p[0] = price18;
+        vm.prank(keeper);
+        oracle.keeperPushPrices(a, p);
+    }
+
+    /// @notice (18,18): exp = 18. Proven equal to mulDiv reference for all inputs.
+    function check_getQuote_eq_reference_18_18(uint256 inAmount, uint256 price) public {
+        vm.assume(price > 0 && price <= 1e25);
+        vm.assume(inAmount <= 1e30);
+        (PoppieEulerAdapterV2 adapter, MockERC20 token) = _setup(18, 18, int256(price));
+        uint256 expected = Math.mulDiv(inAmount, price, 1e18);
+        assertEq(adapter.getQuote(inAmount, address(token), UNIT), expected);
+    }
+
+    /// @notice (6,18): exp = 6. Smaller base decimals path.
+    function check_getQuote_eq_reference_6_18(uint256 inAmount, uint256 price) public {
+        vm.assume(price > 0 && price <= 1e25);
+        vm.assume(inAmount <= 1e24);
+        (PoppieEulerAdapterV2 adapter, MockERC20 token) = _setup(6, 18, int256(price));
+        uint256 expected = Math.mulDiv(inAmount, price, 1e6);
+        assertEq(adapter.getQuote(inAmount, address(token), UNIT), expected);
+    }
+
+    /// @notice (18,6): exp = 30. The divide-heavy path that the legacy suite never
+    ///         exercised (all V2 unit tests used uoaDec == 18).
+    function check_getQuote_eq_reference_18_6(uint256 inAmount, uint256 price) public {
+        vm.assume(price > 0 && price <= 1e25);
+        vm.assume(inAmount <= 1e30);
+        (PoppieEulerAdapterV2 adapter, MockERC20 token) = _setup(18, 6, int256(price));
+        uint256 expected = Math.mulDiv(inAmount, price, 10 ** 30);
+        assertEq(adapter.getQuote(inAmount, address(token), UNIT), expected);
+    }
+
+    /// @notice Zero input always yields zero, any price/decimals.
+    function check_getQuote_zeroIn(uint256 price) public {
+        vm.assume(price > 0 && price <= 1e25);
+        (PoppieEulerAdapterV2 adapter, MockERC20 token) = _setup(18, 18, int256(price));
+        assertEq(adapter.getQuote(0, address(token), UNIT), 0);
+    }
+}
