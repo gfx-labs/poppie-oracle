@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.24;
+pragma solidity >=0.8.24;
 
 import {Test} from "forge-std/Test.sol";
-import {PoppieEulerOracleV2} from "../src/PoppieEulerOracleV2.sol";
-import {PoppieEulerAdapterV2} from "../src/PoppieEulerAdapterV2.sol";
+import {PoppieEulerOracle} from "../src/PoppieEulerOracle.sol";
+import {PoppieEulerAdapter} from "../src/PoppieEulerAdapter.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 /// @notice Hardening / finding-confirmation tests written during the EVM contract
 ///         review. These cover regimes the existing suite left untested and turn
 ///         the manual-reasoning findings into executable evidence.
-contract PoppieEulerV2ReviewTest is Test {
-    PoppieEulerOracleV2 oracle;
+contract PoppieEulerReviewTest is Test {
+    PoppieEulerOracle oracle;
 
     address admin = address(0xAD);
     address keeper = address(0xBE);
@@ -20,7 +20,7 @@ contract PoppieEulerV2ReviewTest is Test {
     address constant UNIT = address(840);
 
     function setUp() public {
-        oracle = new PoppieEulerOracleV2(admin, keeper, 3600);
+        oracle = new PoppieEulerOracle(admin, keeper, 3600, 86400);
     }
 
     function _arr(address x) internal pure returns (address[] memory r) {
@@ -29,17 +29,30 @@ contract PoppieEulerV2ReviewTest is Test {
     }
 
     function _configureAndRegister(
-        PoppieEulerAdapterV2 adapter,
+        PoppieEulerAdapter adapter,
         MockERC20 t,
         uint256 cb,
         int256 price
     ) internal {
+        _configureAndRegister(adapter, t, cb, cb, price);
+    }
+
+    function _configureAndRegister(
+        PoppieEulerAdapter adapter,
+        MockERC20 t,
+        uint256 cb,
+        uint256 cap,
+        int256 price
+    ) internal {
         uint256[] memory th = new uint256[](1);
         th[0] = cb;
+        uint256[] memory caps = new uint256[](1);
+        caps[0] = cap;
         vm.prank(admin);
-        oracle.configureAssets(_arr(address(t)), th);
+        oracle.configureAssets(_arr(address(t)), th, caps);
+        uint8 dec = t.decimals();
         vm.prank(aAdmin);
-        adapter.registerBase(address(t));
+        adapter.registerBase(address(t), dec);
         int256[] memory p = new int256[](1);
         p[0] = price;
         vm.prank(keeper);
@@ -52,8 +65,8 @@ contract PoppieEulerV2ReviewTest is Test {
     // ---------------------------------------------------------------------
 
     function test_getQuote_unitDecimals6() public {
-        PoppieEulerAdapterV2 adapter =
-            new PoppieEulerAdapterV2(address(oracle), aAdmin, UNIT, 6);
+        PoppieEulerAdapter adapter =
+            new PoppieEulerAdapter(address(oracle), aAdmin, UNIT, 6);
         MockERC20 t = new MockERC20("AAPLon", "AAPLon", 18);
         _configureAndRegister(adapter, t, 0, 175.23e18);
 
@@ -65,8 +78,8 @@ contract PoppieEulerV2ReviewTest is Test {
     }
 
     function test_getQuote_unitDecimals8_baseDecimals6() public {
-        PoppieEulerAdapterV2 adapter =
-            new PoppieEulerAdapterV2(address(oracle), aAdmin, UNIT, 8);
+        PoppieEulerAdapter adapter =
+            new PoppieEulerAdapter(address(oracle), aAdmin, UNIT, 8);
         MockERC20 t = new MockERC20("USDCon", "USDCon", 6);
         _configureAndRegister(adapter, t, 0, 1e18); // $1
 
@@ -85,8 +98,8 @@ contract PoppieEulerV2ReviewTest is Test {
         int256 price18 = int256(bound(priceRaw, 1e14, 1e25));
         inAmount = bound(inAmount, 0, 1e12 * (10 ** uint256(baseDec)));
 
-        PoppieEulerAdapterV2 adapter =
-            new PoppieEulerAdapterV2(address(oracle), aAdmin, UNIT, uoaDec);
+        PoppieEulerAdapter adapter =
+            new PoppieEulerAdapter(address(oracle), aAdmin, UNIT, uoaDec);
         MockERC20 t = new MockERC20("F", "F", baseDec);
         _configureAndRegister(adapter, t, 0, price18);
 
@@ -97,30 +110,54 @@ contract PoppieEulerV2ReviewTest is Test {
 
     // ---------------------------------------------------------------------
     // FINDING (Low, accepted): the circuit breaker bounds a SINGLE step, not
-    // cumulative drift. A keeper can walk the price far past the per-asset
-    // threshold across several in-band pushes. Documented in oracle.md Trust
-    // Model; encoded here so the behavior is explicit and regression-guarded.
+    // Cumulative deviation guard: multiple in-band pushes that compound
+    // beyond the cumulative cap are now blocked.
     // ---------------------------------------------------------------------
 
-    function test_circuitBreaker_cumulativeDriftIsUnbounded() public {
-        PoppieEulerAdapterV2 adapter =
-            new PoppieEulerAdapterV2(address(oracle), aAdmin, UNIT, 18);
+    function test_circuitBreaker_cumulativeDriftIsBlocked() public {
+        PoppieEulerAdapter adapter =
+            new PoppieEulerAdapter(address(oracle), aAdmin, UNIT, 18);
         MockERC20 t = new MockERC20("AAPLon", "AAPLon", 18);
-        _configureAndRegister(adapter, t, 5000, 100e18); // 50% per-step breaker
+        _configureAndRegister(adapter, t, 5000, 100e18); // 50% per-step, 50% cumulative cap
 
-        // Each push is +40% (within the 50% step breaker) yet compounds well
-        // beyond 50% cumulatively.
-        int256 cur = 100e18;
-        for (uint256 i = 0; i < 5; i++) {
-            cur = (cur * 140) / 100;
-            int256[] memory p = new int256[](1);
-            p[0] = cur;
-            vm.prank(keeper);
-            oracle.keeperPushPrices(_arr(address(t)), p);
-        }
-        // 100 -> ~537.8 (5 x +40%), a >430% move executed entirely in-band.
-        assertEq(oracle.getPrice(address(t)), cur);
-        assertGt(cur, 500e18);
+        // First push: +40% (within both the 50% step breaker and 50% cumulative cap).
+        int256[] memory p = new int256[](1);
+        p[0] = 140e18;
+        vm.prank(keeper);
+        oracle.keeperPushPrices(_arr(address(t)), p);
+
+        // Second push: another +40% from 140 -> 196. Total from anchor (100): +96%.
+        // Exceeds the 50% cumulative cap.
+        p[0] = 196e18;
+        vm.prank(keeper);
+        vm.expectRevert(); // CumulativeDeviationExceeded
+        oracle.keeperPushPrices(_arr(address(t)), p);
+
+        // Price stays at the first push value.
+        assertEq(oracle.getPrice(address(t)), 140e18);
+    }
+
+    function test_circuitBreaker_cumulativeDriftResetsAfterWindow() public {
+        PoppieEulerAdapter adapter =
+            new PoppieEulerAdapter(address(oracle), aAdmin, UNIT, 18);
+        MockERC20 t = new MockERC20("AAPLon", "AAPLon", 18);
+        _configureAndRegister(adapter, t, 5000, 5000, 100e18); // explicit 50%/50%
+
+        // Push +40% (within both guards).
+        int256[] memory p = new int256[](1);
+        p[0] = 140e18;
+        vm.prank(keeper);
+        oracle.keeperPushPrices(_arr(address(t)), p);
+
+        // Wait for the anchor window to expire (86400s in test setup).
+        vm.warp(block.timestamp + 86401);
+
+        // Now another +40% from 140 -> 196 should succeed because the anchor
+        // resets to 140 (the current lastPrice) at the start of this push.
+        p[0] = 196e18;
+        vm.prank(keeper);
+        oracle.keeperPushPrices(_arr(address(t)), p);
+        assertEq(oracle.getPrice(address(t)), 196e18);
     }
 
     // ---------------------------------------------------------------------
@@ -134,7 +171,7 @@ contract PoppieEulerV2ReviewTest is Test {
         uint256[] memory th = new uint256[](1);
         th[0] = 0;
         vm.prank(admin);
-        oracle.configureAssets(_arr(address(t)), th);
+        oracle.configureAssets(_arr(address(t)), th, th);
         int256[] memory p = new int256[](1);
         p[0] = 100e18;
         vm.prank(keeper);
@@ -153,17 +190,15 @@ contract PoppieEulerV2ReviewTest is Test {
     // for a never-registered base (misleading log). Confirm it does not revert.
     // ---------------------------------------------------------------------
 
-    function test_unregisterBase_neverRegistered_doesNotRevert() public {
-        PoppieEulerAdapterV2 adapter =
-            new PoppieEulerAdapterV2(address(oracle), aAdmin, UNIT, 18);
+    function test_unregisterBase_neverRegistered_reverts() public {
+        PoppieEulerAdapter adapter =
+            new PoppieEulerAdapter(address(oracle), aAdmin, UNIT, 18);
         MockERC20 t = new MockERC20("X", "X", 18);
         (bool regBefore,) = adapter.getBaseInfo(address(t));
         assertFalse(regBefore);
-        // Emits BaseUnregistered despite the base never having been registered.
         vm.prank(aAdmin);
-        adapter.unregisterBase(address(t)); // no revert
-        (bool regAfter,) = adapter.getBaseInfo(address(t));
-        assertFalse(regAfter);
+        vm.expectRevert();
+        adapter.unregisterBase(address(t));
     }
 
     // ---------------------------------------------------------------------
@@ -176,7 +211,7 @@ contract PoppieEulerV2ReviewTest is Test {
         uint256[] memory th = new uint256[](1);
         th[0] = 5000;
         vm.prank(admin);
-        oracle.configureAssets(_arr(address(t)), th);
+        oracle.configureAssets(_arr(address(t)), th, th);
         int256[] memory p = new int256[](1);
         p[0] = 100e18;
         vm.prank(keeper);
@@ -200,7 +235,7 @@ contract PoppieEulerV2ReviewTest is Test {
         uint256[] memory th = new uint256[](1);
         th[0] = 0;
         vm.prank(admin);
-        oracle.configureAssets(_arr(address(t)), th);
+        oracle.configureAssets(_arr(address(t)), th, th);
         int256[] memory p = new int256[](1);
         p[0] = 100e18;
         vm.prank(keeper);

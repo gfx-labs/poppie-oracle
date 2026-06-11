@@ -1,24 +1,24 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.24;
+pragma solidity >=0.8.24;
 
 import {Test, StdInvariant} from "forge-std/Test.sol";
-import {PoppieEulerOracleV2} from "../src/PoppieEulerOracleV2.sol";
-import {IPoppieEulerOracleV2} from "../src/interfaces/IPoppieEulerOracleV2.sol";
-import {PoppieEulerAdapterV2} from "../src/PoppieEulerAdapterV2.sol";
+import {PoppieEulerOracle} from "../src/PoppieEulerOracle.sol";
+import {IPoppieEulerOracle} from "../src/interfaces/IPoppieEulerOracle.sol";
+import {PoppieEulerAdapter} from "../src/PoppieEulerAdapter.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 
-/// @notice Bounded actor driving keeper/admin flows for the V2 oracle+adapter.
-contract OracleV2Handler is Test {
-    PoppieEulerOracleV2 public oracle;
-    PoppieEulerAdapterV2 public adapter;
+/// @notice Bounded actor driving keeper/admin flows for the oracle+adapter.
+contract OracleHandler is Test {
+    PoppieEulerOracle public oracle;
+    PoppieEulerAdapter public adapter;
     address public token;
     address public keeper;
     address public admin;
     address public adapterAdmin;
 
     constructor(
-        PoppieEulerOracleV2 _oracle,
-        PoppieEulerAdapterV2 _adapter,
+        PoppieEulerOracle _oracle,
+        PoppieEulerAdapter _adapter,
         address _token,
         address _keeper,
         address _admin,
@@ -66,11 +66,11 @@ contract OracleV2Handler is Test {
     }
 }
 
-contract PoppieEulerOracleV2InvariantTest is StdInvariant, Test {
-    PoppieEulerOracleV2 oracle;
-    PoppieEulerAdapterV2 adapter;
+contract PoppieEulerOracleInvariantTest is StdInvariant, Test {
+    PoppieEulerOracle oracle;
+    PoppieEulerAdapter adapter;
     MockERC20 token;
-    OracleV2Handler handler;
+    OracleHandler handler;
 
     address admin = address(0xAD);
     address keeper = address(0xBE);
@@ -80,24 +80,25 @@ contract PoppieEulerOracleV2InvariantTest is StdInvariant, Test {
 
     function setUp() public {
         token = new MockERC20("T", "T", 18);
-        oracle = new PoppieEulerOracleV2(admin, keeper, 3600);
-        adapter = new PoppieEulerAdapterV2(address(oracle), aAdmin, UNIT, 18);
+        oracle = new PoppieEulerOracle(admin, keeper, 3600, 86400);
+        adapter = new PoppieEulerAdapter(address(oracle), aAdmin, UNIT, 18);
 
         uint256[] memory t = new uint256[](1);
         address[] memory a = new address[](1);
         a[0] = address(token);
         t[0] = CB;
         vm.prank(admin);
-        oracle.configureAssets(a, t);
+        oracle.configureAssets(a, t, t);
+        uint8 dec = token.decimals();
         vm.prank(aAdmin);
-        adapter.registerBase(address(token));
+        adapter.registerBase(address(token), dec);
 
         int256[] memory p = new int256[](1);
         p[0] = 100e18;
         vm.prank(keeper);
         oracle.keeperPushPrices(a, p);
 
-        handler = new OracleV2Handler(oracle, adapter, address(token), keeper, admin, aAdmin);
+        handler = new OracleHandler(oracle, adapter, address(token), keeper, admin, aAdmin);
         targetContract(address(handler));
     }
 

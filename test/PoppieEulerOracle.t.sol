@@ -1,23 +1,24 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.24;
+pragma solidity >=0.8.24;
 
 import {Test} from "forge-std/Test.sol";
-import {PoppieEulerOracleV2} from "../src/PoppieEulerOracleV2.sol";
-import {IPoppieEulerOracleV2} from "../src/interfaces/IPoppieEulerOracleV2.sol";
+import {PoppieEulerOracle} from "../src/PoppieEulerOracle.sol";
+import {IPoppieEulerOracle} from "../src/interfaces/IPoppieEulerOracle.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 
-contract PoppieEulerOracleV2Test is Test {
+contract PoppieEulerOracleTest is Test {
     // Mirror events for expectEmit assertions
     event PricesRefreshed(address[] assets);
-    event AssetConfigured(address indexed asset);
-    event CircuitBreakerThresholdSet(address indexed asset, uint256 threshold);
-    event KeeperUpdated(address oldKeeper, address newKeeper);
-    event AdminUpdated(address oldAdmin, address newAdmin);
+    event AssetConfigured(address indexed asset, uint256 circuitBreakerThreshold, uint256 cumulativeDeviationCap);
+    event AssetThresholdsUpdated(address indexed asset, uint256 circuitBreakerThreshold, uint256 cumulativeDeviationCap);
+    event KeeperUpdated(address indexed oldKeeper, address indexed newKeeper);
+    event AdminTransferStarted(address indexed currentAdmin, address indexed pendingAdmin);
+    event AdminTransferred(address indexed oldAdmin, address indexed newAdmin);
     event MaxPriceAgeUpdated(uint256 oldValue, uint256 newValue);
     event AdminPriceForced(address indexed asset, int256 price);
-    event OracleDeployed(address indexed admin, address indexed keeper, uint256 maxPriceAge);
+    event OracleDeployed(address indexed admin, address indexed keeper, uint256 maxPriceAge, uint256 anchorWindow);
 
-    PoppieEulerOracleV2 oracle;
+    PoppieEulerOracle oracle;
     MockERC20 token;
 
     address admin = address(0xAD);
@@ -29,14 +30,14 @@ contract PoppieEulerOracleV2Test is Test {
 
     function setUp() public {
         token = new MockERC20("AAPLon", "AAPLon", 18);
-        oracle = new PoppieEulerOracleV2(admin, keeper, MAX_AGE);
+        oracle = new PoppieEulerOracle(admin, keeper, MAX_AGE, 86400);
 
         address[] memory a = new address[](1);
         uint256[] memory t = new uint256[](1);
         a[0] = address(token);
         t[0] = CB;
         vm.prank(admin);
-        oracle.configureAssets(a, t);
+        oracle.configureAssets(a, t, t);
     }
 
     function _arr(address x) internal pure returns (address[] memory r) {
@@ -61,24 +62,24 @@ contract PoppieEulerOracleV2Test is Test {
 
     function test_constructor_emitsOracleDeployed() public {
         vm.expectEmit(true, true, false, true);
-        emit OracleDeployed(admin, keeper, MAX_AGE);
-        new PoppieEulerOracleV2(admin, keeper, MAX_AGE);
+        emit OracleDeployed(admin, keeper, MAX_AGE, 86400);
+        new PoppieEulerOracle(admin, keeper, MAX_AGE, 86400);
     }
 
     function test_constructor_revert_zeroAdmin() public {
-        vm.expectRevert("PoppieEulerOracle: zero admin");
-        new PoppieEulerOracleV2(address(0), keeper, MAX_AGE);
+        vm.expectRevert(IPoppieEulerOracle.ZeroAddress.selector);
+        new PoppieEulerOracle(address(0), keeper, MAX_AGE, 86400);
     }
 
     function test_constructor_revert_zeroKeeper() public {
-        vm.expectRevert("PoppieEulerOracle: zero keeper");
-        new PoppieEulerOracleV2(admin, address(0), MAX_AGE);
+        vm.expectRevert(IPoppieEulerOracle.ZeroAddress.selector);
+        new PoppieEulerOracle(admin, address(0), MAX_AGE, 86400);
     }
 
     // --- configureAssets ---
 
     function test_configureAssets() public view {
-        IPoppieEulerOracleV2.AssetConfig memory c = oracle.getAssetConfig(address(token));
+        IPoppieEulerOracle.AssetConfig memory c = oracle.getAssetConfig(address(token));
         assertTrue(c.configured);
         assertEq(c.circuitBreakerThreshold, CB);
         assertEq(c.lastPrice, 0);
@@ -89,33 +90,33 @@ contract PoppieEulerOracleV2Test is Test {
         uint256[] memory th = new uint256[](1);
         th[0] = CB;
         vm.expectEmit(true, false, false, true);
-        emit AssetConfigured(address(t2));
+        emit AssetConfigured(address(t2), CB, CB);
         vm.prank(admin);
-        oracle.configureAssets(_arr(address(t2)), th);
+        oracle.configureAssets(_arr(address(t2)), th, th);
     }
 
     function test_configureAssets_revert_notAdmin() public {
         address[] memory a = new address[](1);
         uint256[] memory t = new uint256[](1);
         vm.prank(user);
-        vm.expectRevert("PoppieEulerOracle: only admin");
-        oracle.configureAssets(a, t);
+        vm.expectRevert(IPoppieEulerOracle.OnlyAdmin.selector);
+        oracle.configureAssets(a, t, t);
     }
 
     function test_configureAssets_revert_alreadyConfigured() public {
         uint256[] memory t = new uint256[](1);
         t[0] = CB;
         vm.prank(admin);
-        vm.expectRevert("PoppieEulerOracle: asset already configured");
-        oracle.configureAssets(_arr(address(token)), t);
+        vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.AssetAlreadyConfigured.selector, address(token)));
+        oracle.configureAssets(_arr(address(token)), t, t);
     }
 
     function test_configureAssets_revert_lengthMismatch() public {
         address[] memory a = new address[](2);
         uint256[] memory t = new uint256[](1);
         vm.prank(admin);
-        vm.expectRevert("PoppieEulerOracle: length mismatch");
-        oracle.configureAssets(a, t);
+        vm.expectRevert(IPoppieEulerOracle.LengthMismatch.selector);
+        oracle.configureAssets(a, t, t);
     }
 
     // --- keeperPushPrices ---
@@ -138,7 +139,7 @@ contract PoppieEulerOracleV2Test is Test {
         int256[] memory p = new int256[](1);
         p[0] = 1e18;
         vm.prank(user);
-        vm.expectRevert("PoppieEulerOracle: only keeper");
+        vm.expectRevert(IPoppieEulerOracle.OnlyKeeper.selector);
         oracle.keeperPushPrices(_arr(address(token)), p);
     }
 
@@ -146,7 +147,7 @@ contract PoppieEulerOracleV2Test is Test {
         int256[] memory p = new int256[](1);
         p[0] = 0;
         vm.prank(keeper);
-        vm.expectRevert("PoppieEulerOracle: invalid price");
+        vm.expectRevert(IPoppieEulerOracle.InvalidPrice.selector);
         oracle.keeperPushPrices(_arr(address(token)), p);
     }
 
@@ -154,7 +155,7 @@ contract PoppieEulerOracleV2Test is Test {
         int256[] memory p = new int256[](1);
         p[0] = -1;
         vm.prank(keeper);
-        vm.expectRevert("PoppieEulerOracle: invalid price");
+        vm.expectRevert(IPoppieEulerOracle.InvalidPrice.selector);
         oracle.keeperPushPrices(_arr(address(token)), p);
     }
 
@@ -163,7 +164,7 @@ contract PoppieEulerOracleV2Test is Test {
         int256[] memory p = new int256[](1);
         p[0] = 1e18;
         vm.prank(keeper);
-        vm.expectRevert("PoppieEulerOracle: asset not configured");
+        vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.AssetNotConfigured.selector, address(t2)));
         oracle.keeperPushPrices(_arr(address(t2)), p);
     }
 
@@ -171,7 +172,7 @@ contract PoppieEulerOracleV2Test is Test {
         address[] memory a = new address[](2);
         int256[] memory p = new int256[](1);
         vm.prank(keeper);
-        vm.expectRevert("PoppieEulerOracle: length mismatch");
+        vm.expectRevert(IPoppieEulerOracle.LengthMismatch.selector);
         oracle.keeperPushPrices(a, p);
     }
 
@@ -188,7 +189,7 @@ contract PoppieEulerOracleV2Test is Test {
         int256[] memory p = new int256[](1);
         p[0] = 160e18; // +60%, exceeds 50%
         vm.prank(keeper);
-        vm.expectRevert("PoppieEulerOracle: circuit breaker triggered");
+        vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.CircuitBreakerTriggered.selector, address(token), 6000, CB));
         oracle.keeperPushPrices(_arr(address(token)), p);
     }
 
@@ -198,24 +199,25 @@ contract PoppieEulerOracleV2Test is Test {
     }
 
     function test_cb_zeroThresholdDisablesBreaker() public {
+        // disable both the per-push CB and the cumulative cap
         vm.prank(admin);
-        oracle.setCircuitBreakerThreshold(address(token), 0);
+        oracle.setAssetThresholds(address(token), 0, 0);
         _push(100e18);
-        _push(100_000e18); // 1000x move allowed when threshold == 0
+        _push(100_000e18); // 1000x move allowed when both guards are 0
         assertEq(oracle.getPrice(address(token)), 100_000e18);
     }
 
     // --- getPrice staleness ---
 
     function test_getPrice_revert_uninitialized() public {
-        vm.expectRevert("PoppieEulerOracle: price not initialized");
+        vm.expectRevert(IPoppieEulerOracle.PriceNotInitialized.selector);
         oracle.getPrice(address(token));
     }
 
     function test_getPrice_revert_stale() public {
         _push(100e18);
         vm.warp(block.timestamp + MAX_AGE + 1);
-        vm.expectRevert("PoppieEulerOracle: stale price");
+        vm.expectRevert(IPoppieEulerOracle.StalePrice.selector);
         oracle.getPrice(address(token));
     }
 
@@ -255,37 +257,37 @@ contract PoppieEulerOracleV2Test is Test {
 
     function test_adminSetPrice_revert_notAdmin() public {
         vm.prank(user);
-        vm.expectRevert("PoppieEulerOracle: only admin");
+        vm.expectRevert(IPoppieEulerOracle.OnlyAdmin.selector);
         oracle.adminSetPrice(address(token), 1e18);
     }
 
     function test_adminSetPrice_revert_invalidPrice() public {
         vm.prank(admin);
-        vm.expectRevert("PoppieEulerOracle: invalid price");
+        vm.expectRevert(IPoppieEulerOracle.InvalidPrice.selector);
         oracle.adminSetPrice(address(token), 0);
     }
 
     function test_adminSetPrice_revert_notConfigured() public {
         MockERC20 t2 = new MockERC20("X", "X", 18);
         vm.prank(admin);
-        vm.expectRevert("PoppieEulerOracle: asset not configured");
+        vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.AssetNotConfigured.selector, address(t2)));
         oracle.adminSetPrice(address(t2), 1e18);
     }
 
-    function test_adminSetPrices_batch() public {
-        int256[] memory p = new int256[](1);
-        p[0] = 50e18;
+    function test_adminSetPrice_multipleAssets() public {
+        MockERC20 t2 = new MockERC20("Y", "Y", 18);
+        uint256[] memory th = new uint256[](1);
+        th[0] = CB;
         vm.prank(admin);
-        oracle.adminSetPrices(_arr(address(token)), p);
-        assertEq(oracle.getPrice(address(token)), 50e18);
-    }
+        oracle.configureAssets(_arr(address(t2)), th, th);
 
-    function test_adminSetPrices_revert_lengthMismatch() public {
-        address[] memory a = new address[](2);
-        int256[] memory p = new int256[](1);
-        vm.prank(admin);
-        vm.expectRevert("PoppieEulerOracle: length mismatch");
-        oracle.adminSetPrices(a, p);
+        vm.startPrank(admin);
+        oracle.adminSetPrice(address(token), 50e18);
+        oracle.adminSetPrice(address(t2), 75e18);
+        vm.stopPrank();
+
+        assertEq(oracle.getPrice(address(token)), 50e18);
+        assertEq(oracle.getPrice(address(t2)), 75e18);
     }
 
     // --- admin setters ---
@@ -300,22 +302,56 @@ contract PoppieEulerOracleV2Test is Test {
 
     function test_setKeeper_revert_zero() public {
         vm.prank(admin);
-        vm.expectRevert("PoppieEulerOracle: zero keeper");
+        vm.expectRevert(IPoppieEulerOracle.ZeroAddress.selector);
         oracle.setKeeper(address(0));
     }
 
-    function test_setAdmin() public {
-        vm.expectEmit(false, false, false, true);
-        emit AdminUpdated(admin, address(0xEE));
+    function test_transferAdmin_twoStep() public {
+        // step 1: current admin proposes
+        vm.expectEmit(true, true, false, true);
+        emit AdminTransferStarted(admin, address(0xEE));
         vm.prank(admin);
-        oracle.setAdmin(address(0xEE));
+        oracle.transferAdmin(address(0xEE));
+        assertEq(oracle.admin(), admin); // not changed yet
+        assertEq(oracle.pendingAdmin(), address(0xEE));
+
+        // step 2: pending admin accepts
+        vm.expectEmit(true, true, false, true);
+        emit AdminTransferred(admin, address(0xEE));
+        vm.prank(address(0xEE));
+        oracle.acceptAdmin();
         assertEq(oracle.admin(), address(0xEE));
+        assertEq(oracle.pendingAdmin(), address(0));
     }
 
-    function test_setAdmin_revert_zero() public {
+    function test_transferAdmin_revert_zero() public {
         vm.prank(admin);
-        vm.expectRevert("PoppieEulerOracle: zero admin");
-        oracle.setAdmin(address(0));
+        vm.expectRevert(IPoppieEulerOracle.ZeroAddress.selector);
+        oracle.transferAdmin(address(0));
+    }
+
+    function test_acceptAdmin_revert_notPending() public {
+        vm.prank(user);
+        vm.expectRevert(IPoppieEulerOracle.NoPendingAdmin.selector);
+        oracle.acceptAdmin();
+    }
+
+    function test_transferAdmin_overwritesPending() public {
+        vm.prank(admin);
+        oracle.transferAdmin(address(0xAA));
+        vm.prank(admin);
+        oracle.transferAdmin(address(0xBB));
+        assertEq(oracle.pendingAdmin(), address(0xBB));
+
+        // old pending can no longer accept
+        vm.prank(address(0xAA));
+        vm.expectRevert(IPoppieEulerOracle.NoPendingAdmin.selector);
+        oracle.acceptAdmin();
+
+        // new pending can
+        vm.prank(address(0xBB));
+        oracle.acceptAdmin();
+        assertEq(oracle.admin(), address(0xBB));
     }
 
     function test_setMaxPriceAge() public {
@@ -326,11 +362,20 @@ contract PoppieEulerOracleV2Test is Test {
         assertEq(oracle.maxPriceAge(), 7200);
     }
 
-    function test_setCircuitBreakerThreshold() public {
+    function test_setAssetThresholds() public {
         vm.expectEmit(true, false, false, true);
-        emit CircuitBreakerThresholdSet(address(token), 1000);
+        emit AssetThresholdsUpdated(address(token), 1000, 2000);
         vm.prank(admin);
-        oracle.setCircuitBreakerThreshold(address(token), 1000);
-        assertEq(oracle.getAssetConfig(address(token)).circuitBreakerThreshold, 1000);
+        oracle.setAssetThresholds(address(token), 1000, 2000);
+        IPoppieEulerOracle.AssetConfig memory cfg = oracle.getAssetConfig(address(token));
+        assertEq(cfg.circuitBreakerThreshold, 1000);
+        assertEq(cfg.cumulativeDeviationCap, 2000);
+    }
+
+    function test_setAssetThresholds_revert_notConfigured() public {
+        MockERC20 t2 = new MockERC20("X", "X", 18);
+        vm.prank(admin);
+        vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.AssetNotConfigured.selector, address(t2)));
+        oracle.setAssetThresholds(address(t2), 1000, 2000);
     }
 }

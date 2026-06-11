@@ -10,3 +10,4 @@ broadcast/
 # OS / editor
 .DS_Store
 *.swp
+src/vendor/soljson-latest.js

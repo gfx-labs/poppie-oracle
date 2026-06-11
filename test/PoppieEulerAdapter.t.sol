@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.24;
+pragma solidity >=0.8.24;
 
 import {Test} from "forge-std/Test.sol";
-import {PoppieEulerOracleV2} from "../src/PoppieEulerOracleV2.sol";
-import {PoppieEulerAdapterV2} from "../src/PoppieEulerAdapterV2.sol";
+import {PoppieEulerOracle} from "../src/PoppieEulerOracle.sol";
+import {PoppieEulerAdapter} from "../src/PoppieEulerAdapter.sol";
+import {IPoppieEulerOracle} from "../src/interfaces/IPoppieEulerOracle.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
-contract PoppieEulerAdapterV2Test is Test {
-    PoppieEulerOracleV2 oracle;
-    PoppieEulerAdapterV2 adapter;
+contract PoppieEulerAdapterTest is Test {
+    PoppieEulerOracle oracle;
+    PoppieEulerAdapter adapter;
 
     MockERC20 token18;
     MockERC20 token6;
@@ -36,21 +37,21 @@ contract PoppieEulerAdapterV2Test is Test {
         token6 = new MockERC20("USDCon", "USDCon", 6);
         token8 = new MockERC20("WBTCon", "WBTCon", 8);
 
-        oracle = new PoppieEulerOracleV2(admin, keeper, 3600);
-        adapter = new PoppieEulerAdapterV2(address(oracle), aAdmin, UNIT, UNIT_DEC);
+        oracle = new PoppieEulerOracle(admin, keeper, 3600, 86400);
+        adapter = new PoppieEulerAdapter(address(oracle), aAdmin, UNIT, UNIT_DEC);
 
         address[] memory a = new address[](3);
         uint256[] memory t = new uint256[](3);
         a[0] = address(token18); a[1] = address(token6); a[2] = address(token8);
         t[0] = CB; t[1] = CB; t[2] = CB;
         vm.prank(admin);
-        oracle.configureAssets(a, t);
+        oracle.configureAssets(a, t, t);
 
         // register bases on adapter
         vm.startPrank(aAdmin);
-        adapter.registerBase(address(token18));
-        adapter.registerBase(address(token6));
-        adapter.registerBase(address(token8));
+        adapter.registerBase(address(token18), token18.decimals());
+        adapter.registerBase(address(token6), token6.decimals());
+        adapter.registerBase(address(token8), token8.decimals());
         vm.stopPrank();
 
         // seed prices
@@ -77,26 +78,26 @@ contract PoppieEulerAdapterV2Test is Test {
     function test_constructor_emitsAdapterDeployed() public {
         vm.expectEmit(true, true, false, true);
         emit AdapterDeployed(address(oracle), UNIT, UNIT_DEC, aAdmin);
-        new PoppieEulerAdapterV2(address(oracle), aAdmin, UNIT, UNIT_DEC);
+        new PoppieEulerAdapter(address(oracle), aAdmin, UNIT, UNIT_DEC);
     }
 
     function test_constructor_revert_zeroMaster() public {
-        vm.expectRevert("PoppieEulerAdapter: zero master");
-        new PoppieEulerAdapterV2(address(0), aAdmin, UNIT, UNIT_DEC);
+        vm.expectRevert(PoppieEulerAdapter.ZeroAddress.selector);
+        new PoppieEulerAdapter(address(0), aAdmin, UNIT, UNIT_DEC);
     }
 
     function test_constructor_revert_zeroAdmin() public {
-        vm.expectRevert("PoppieEulerAdapter: zero admin");
-        new PoppieEulerAdapterV2(address(oracle), address(0), UNIT, UNIT_DEC);
+        vm.expectRevert(PoppieEulerAdapter.ZeroAddress.selector);
+        new PoppieEulerAdapter(address(oracle), address(0), UNIT, UNIT_DEC);
     }
 
     function test_constructor_revert_zeroUnit() public {
-        vm.expectRevert("PoppieEulerAdapter: zero unit of account");
-        new PoppieEulerAdapterV2(address(oracle), aAdmin, address(0), UNIT_DEC);
+        vm.expectRevert(PoppieEulerAdapter.ZeroAddress.selector);
+        new PoppieEulerAdapter(address(oracle), aAdmin, address(0), UNIT_DEC);
     }
 
     function test_name() public view {
-        assertEq(adapter.name(), "PoppieEulerAdapterV2");
+        assertEq(adapter.name(), "PoppieEulerAdapter");
     }
 
     // --- Base registration ---
@@ -109,58 +110,39 @@ contract PoppieEulerAdapterV2Test is Test {
 
     function test_registerBase_revert_notAdmin() public {
         MockERC20 t = new MockERC20("X", "X", 18);
+        uint8 dec = t.decimals();
         vm.prank(user);
-        vm.expectRevert("PoppieEulerAdapter: only admin");
-        adapter.registerBase(address(t));
+        vm.expectRevert(PoppieEulerAdapter.OnlyAdmin.selector);
+        adapter.registerBase(address(t), dec);
     }
 
     function test_registerBase_revert_zero() public {
         vm.prank(aAdmin);
-        vm.expectRevert("PoppieEulerAdapter: zero base");
-        adapter.registerBase(address(0));
+        vm.expectRevert(PoppieEulerAdapter.ZeroAddress.selector);
+        adapter.registerBase(address(0), 18);
     }
 
     function test_registerBase_revert_alreadyRegistered() public {
+        uint8 dec = token18.decimals();
         vm.prank(aAdmin);
-        vm.expectRevert("PoppieEulerAdapter: base already registered");
-        adapter.registerBase(address(token18));
+        vm.expectRevert(abi.encodeWithSelector(PoppieEulerAdapter.BaseAlreadyRegistered.selector, address(token18)));
+        adapter.registerBase(address(token18), dec);
     }
 
     function test_registerBase_revert_decimalsTooLarge() public {
-        MockERC20 t = new MockERC20("X", "X", 19);
-        vm.prank(aAdmin);
-        vm.expectRevert("PoppieEulerAdapter: decimals too large");
-        adapter.registerBase(address(t));
-    }
-
-    function test_registerBaseWithDecimals() public {
         MockERC20 t = new MockERC20("X", "X", 18);
         vm.prank(aAdmin);
-        adapter.registerBaseWithDecimals(address(t), 9);
+        vm.expectRevert(abi.encodeWithSelector(PoppieEulerAdapter.DecimalsTooLarge.selector, 19));
+        adapter.registerBase(address(t), 19);
+    }
+
+    function test_registerBase_explicitDecimals() public {
+        MockERC20 t = new MockERC20("X", "X", 18);
+        vm.prank(aAdmin);
+        adapter.registerBase(address(t), 9);
         (bool reg, uint8 dec) = adapter.getBaseInfo(address(t));
         assertTrue(reg);
         assertEq(dec, 9);
-    }
-
-    function test_registerBaseWithDecimals_revert_tooLarge() public {
-        MockERC20 t = new MockERC20("X", "X", 18);
-        vm.prank(aAdmin);
-        vm.expectRevert("PoppieEulerAdapter: decimals too large");
-        adapter.registerBaseWithDecimals(address(t), 19);
-    }
-
-    function test_updateBaseDecimals() public {
-        vm.prank(aAdmin);
-        adapter.updateBaseDecimals(address(token18), 8);
-        (, uint8 dec) = adapter.getBaseInfo(address(token18));
-        assertEq(dec, 8);
-    }
-
-    function test_updateBaseDecimals_revert_notRegistered() public {
-        MockERC20 t = new MockERC20("X", "X", 18);
-        vm.prank(aAdmin);
-        vm.expectRevert("PoppieEulerAdapter: base not registered");
-        adapter.updateBaseDecimals(address(t), 8);
     }
 
     function test_unregisterBase() public {
@@ -168,14 +150,20 @@ contract PoppieEulerAdapterV2Test is Test {
         adapter.unregisterBase(address(token18));
         (bool reg,) = adapter.getBaseInfo(address(token18));
         assertFalse(reg);
-        vm.expectRevert("PoppieEulerAdapter: base not registered");
+        vm.expectRevert(abi.encodeWithSelector(PoppieEulerAdapter.BaseNotRegistered.selector, address(token18)));
         adapter.getQuote(1e18, address(token18), UNIT);
     }
 
-    function test_setAdmin() public {
+    function test_transferAdmin_twoStep() public {
         vm.prank(aAdmin);
-        adapter.setAdmin(address(0xEE));
+        adapter.transferAdmin(address(0xEE));
+        assertEq(adapter.admin(), aAdmin); // not changed yet
+        assertEq(adapter.pendingAdmin(), address(0xEE));
+
+        vm.prank(address(0xEE));
+        adapter.acceptAdmin();
         assertEq(adapter.admin(), address(0xEE));
+        assertEq(adapter.pendingAdmin(), address(0));
     }
 
     // --- getQuote correctness ---
@@ -203,19 +191,19 @@ contract PoppieEulerAdapterV2Test is Test {
     }
 
     function test_getQuote_revert_unsupportedQuote() public {
-        vm.expectRevert("PoppieEulerAdapter: unsupported quote");
+        vm.expectRevert(abi.encodeWithSelector(PoppieEulerAdapter.UnsupportedQuote.selector, address(0x999)));
         adapter.getQuote(1e18, address(token18), address(0x999));
     }
 
     function test_getQuote_revert_baseNotRegistered() public {
         MockERC20 t = new MockERC20("X", "X", 18);
-        vm.expectRevert("PoppieEulerAdapter: base not registered");
+        vm.expectRevert(abi.encodeWithSelector(PoppieEulerAdapter.BaseNotRegistered.selector, address(t)));
         adapter.getQuote(1e18, address(t), UNIT);
     }
 
     function test_getQuote_revert_staleMasterPrice() public {
         vm.warp(block.timestamp + 3601);
-        vm.expectRevert("PoppieEulerOracle: stale price");
+        vm.expectRevert(IPoppieEulerOracle.StalePrice.selector);
         adapter.getQuote(1e18, address(token18), UNIT);
     }
 
@@ -241,9 +229,10 @@ contract PoppieEulerAdapterV2Test is Test {
         uint256[] memory th = new uint256[](1);
         th[0] = 0; // disable CB for arbitrary price
         vm.prank(admin);
-        oracle.configureAssets(_arr(address(t)), th);
+        oracle.configureAssets(_arr(address(t)), th, th);
+        uint8 dec = t.decimals();
         vm.prank(aAdmin);
-        adapter.registerBase(address(t));
+        adapter.registerBase(address(t), dec);
         int256[] memory p = new int256[](1);
         p[0] = price18;
         vm.prank(keeper);
@@ -259,13 +248,13 @@ contract PoppieEulerAdapterV2Test is Test {
     function test_H1_constructor_revert_unitDecimalsTooLarge() public {
         // Previously a UoA-decimals > baseDecimals+18 adapter bricked every quote with
         // an underflow. The fix bounds unitOfAccountDecimals at deploy time.
-        vm.expectRevert("PoppieEulerAdapter: unit decimals too large");
-        new PoppieEulerAdapterV2(address(oracle), aAdmin, UNIT, 19);
+        vm.expectRevert(abi.encodeWithSelector(PoppieEulerAdapter.DecimalsTooLarge.selector, 19));
+        new PoppieEulerAdapter(address(oracle), aAdmin, UNIT, 19);
     }
 
     function test_H1_constructor_acceptsMaxUnitDecimals() public {
         // 18 is the maximum allowed and must succeed.
-        PoppieEulerAdapterV2 a18 = new PoppieEulerAdapterV2(address(oracle), aAdmin, UNIT, 18);
+        PoppieEulerAdapter a18 = new PoppieEulerAdapter(address(oracle), aAdmin, UNIT, 18);
         assertEq(a18.unitOfAccountDecimals(), 18);
     }
 
@@ -297,9 +286,10 @@ contract PoppieEulerAdapterV2Test is Test {
         uint256[] memory th = new uint256[](1);
         th[0] = 0;
         vm.prank(admin);
-        oracle.configureAssets(_arr(address(t)), th);
+        oracle.configureAssets(_arr(address(t)), th, th);
+        uint8 dec = t.decimals();
         vm.prank(aAdmin);
-        adapter.registerBase(address(t));
+        adapter.registerBase(address(t), dec);
         int256[] memory p = new int256[](1);
         p[0] = price18;
         vm.prank(keeper);
