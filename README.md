@@ -3,8 +3,20 @@
 Custom oracle contracts for the Poppie x Euler V2 lending market (tokenized
 US equities as collateral, USDT borrowable).
 
-**Status: pre-deployment.** These contracts have not been deployed yet. The
-codebase is undergoing active development and review.
+## Deployments
+
+| Network | Contract | Address |
+|---------|----------|---------|
+| BSC (dev) | `PoppieEulerOracle` | [`0x3e33Dc73731E6103B3040CC95672C10cBe953418`](https://bscscan.com/address/0x3e33Dc73731E6103B3040CC95672C10cBe953418) |
+| BSC (dev) | `PoppieEulerAdapter` | [`0x0c141b9591e55d07260cE4eb371e2C7757717e6A`](https://bscscan.com/address/0x0c141b9591e55d07260cE4eb371e2C7757717e6A) |
+
+Dev deployment parameters:
+- `maxPriceAge`: 3600s (1 hour)
+- `anchorWindow`: 86400s (24 hours)
+- `unitOfAccount`: `address(840)` (USD), 18 decimals
+- 25 Ondo GM tokens configured (matching BSC production asset set)
+- Admin: `0xDDeFb8145fA286195f091E3D7749e22B53Bb28bF`
+- Keeper: `0x9e77D62f664cb1ebe40C0629841e69Dbf7f646e1` (GCP KMS)
 
 ## Contracts
 
@@ -74,6 +86,17 @@ forge test
 | `PoppieEulerOracle.invariant.t.sol` | Invariants: price positivity, timestamp sanity, config persistence |
 | `PoppieEulerAdapter.symbolic.t.sol` | Symbolic/Halmos: quote math equivalence proofs |
 | `PoppieEuler.review.t.sol` | Review-oriented property tests |
+
+## Deploy scripts
+
+```bash
+# deploy oracle + adapter
+source .env
+forge script script/DeployDev.s.sol --rpc-url $BSC_RPC_URL --broadcast
+
+# configure 25 assets + register bases
+forge script script/ConfigureDev.s.sol --rpc-url $BSC_RPC_URL --broadcast
+```
 
 ## Static analysis
 
