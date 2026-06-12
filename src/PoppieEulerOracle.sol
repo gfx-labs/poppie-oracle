@@ -139,9 +139,12 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
             if (!_assetConfigs[assets[i]].configured) revert AssetNotConfigured(assets[i]);
             if (_assetConfigs[assets[i]].paused) revert AssetPaused(assets[i]);
             _assetConfigs[assets[i]].paused = true;
-            // zero the price so admin must set a reference before keeper can unpause
+            // zero all price state so admin must set a fresh reference
+            // before keeper can unpause. leaves no stale values.
             _assetConfigs[assets[i]].lastPrice = 0;
             _assetConfigs[assets[i]].lastPriceTimestamp = 0;
+            _assetConfigs[assets[i]].anchorPrice = 0;
+            _assetConfigs[assets[i]].anchorTimestamp = 0;
             emit AssetPausedEvent(assets[i]);
         }
     }

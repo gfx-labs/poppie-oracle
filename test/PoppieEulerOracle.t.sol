@@ -413,12 +413,20 @@ contract PoppieEulerOracleTest is Test {
         oracle.pauseAssets(_arr(address(token)));
     }
 
-    function test_pause_zerosLastPrice() public {
+    function test_pause_zerosAllPriceState() public {
         _push(100e18);
         vm.prank(keeper);
         oracle.pauseAssets(_arr(address(token)));
-        // lastPrice is zeroed
-        assertEq(oracle.getAssetConfig(address(token)).lastPrice, 0);
+        IPoppieEulerOracle.AssetConfig memory cfg = oracle.getAssetConfig(address(token));
+        // all price state is zeroed — no stale values
+        assertEq(cfg.lastPrice, 0);
+        assertEq(cfg.lastPriceTimestamp, 0);
+        assertEq(cfg.anchorPrice, 0);
+        assertEq(cfg.anchorTimestamp, 0);
+        // config preserved
+        assertTrue(cfg.configured);
+        assertTrue(cfg.paused);
+        assertEq(cfg.circuitBreakerThreshold, CB);
     }
 
     function test_pause_keeperCannotUnpauseWithoutAdminReference() public {
@@ -501,3 +509,6 @@ contract PoppieEulerOracleTest is Test {
         assertFalse(oracle.getAssetConfig(address(token)).paused);
     }
 }
+
+// Appended: cross-window anchor analysis
+// (remove after review — not a permanent test)
