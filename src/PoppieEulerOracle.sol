@@ -77,7 +77,7 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
         if (assets.length != prices.length) revert LengthMismatch();
         uint40 ts = uint40(block.timestamp);
 
-        for (uint256 i; i < assets.length;) {
+        for (uint256 i = 0; i < assets.length; ++i) {
             if (prices[i] == 0) revert InvalidPrice();
             AssetConfig storage cfg = _assetConfigs[assets[i]];
             if (!cfg.configured) revert AssetNotConfigured(assets[i]);
@@ -111,7 +111,6 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
             cfg.lastPrice = prices[i];
             cfg.lastPriceTimestamp = ts;
 
-            ++i;
         }
 
         emit PricesRefreshed(assets);
@@ -120,7 +119,7 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
     /// @inheritdoc IPoppieEulerOracle
     function pauseAssets(address[] calldata assets) external override {
         if (msg.sender != keeper && msg.sender != admin) revert OnlyKeeperOrAdmin();
-        for (uint256 i; i < assets.length;) {
+        for (uint256 i = 0; i < assets.length; ++i) {
             AssetConfig storage cfg = _assetConfigs[assets[i]];
             if (!cfg.configured) revert AssetNotConfigured(assets[i]);
             if (cfg.paused) revert AssetPaused(assets[i]);
@@ -130,7 +129,6 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
             cfg.anchorPrice = 0;
             cfg.anchorTimestamp = 0;
             emit AssetPausedEvent(assets[i]);
-            ++i;
         }
     }
 
@@ -145,7 +143,7 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
         if (assets.length != circuitBreakerThresholds.length || assets.length != cumulativeDeviationCaps.length) {
             revert LengthMismatch();
         }
-        for (uint256 i; i < assets.length;) {
+        for (uint256 i = 0; i < assets.length; ++i) {
             if (_assetConfigs[assets[i]].configured) revert AssetAlreadyConfigured(assets[i]);
             _assetConfigs[assets[i]] = AssetConfig({
                 configured: true,
@@ -158,7 +156,6 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
                 anchorPrice: 0
             });
             emit AssetConfigured(assets[i], circuitBreakerThresholds[i], cumulativeDeviationCaps[i]);
-            ++i;
         }
     }
 
