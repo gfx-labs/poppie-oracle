@@ -7,8 +7,8 @@ US equities as collateral, USDT borrowable).
 
 | Network | Contract | Address |
 |---------|----------|---------|
-| BSC (dev) | `PoppieEulerOracle` | [`0x60d29E637CeA469d5855dcB9f1fC1864D2FB6F45`](https://bscscan.com/address/0x60d29E637CeA469d5855dcB9f1fC1864D2FB6F45) |
-| BSC (dev) | `PoppieEulerAdapter` | [`0xE09ad06c3DFefAC759388b0492D8E864b06440F6`](https://bscscan.com/address/0xE09ad06c3DFefAC759388b0492D8E864b06440F6) |
+| BSC (dev) | `PoppieEulerOracle` | [`0x0735787c7eA8d8B60Ae87cC27c724484E4488043`](https://bscscan.com/address/0x0735787c7eA8d8B60Ae87cC27c724484E4488043) |
+| BSC (dev) | `PoppieEulerAdapter` | [`0x3aBEe5638d93d792c9b282f0204e925f9A50C09C`](https://bscscan.com/address/0x3aBEe5638d93d792c9b282f0204e925f9A50C09C) |
 
 Dev deployment parameters:
 - `maxPriceAge`: 3600s (1 hour)

@@ -16,8 +16,8 @@ interface IERC20 {
 ///     --rpc-url $BSC_RPC_URL --broadcast
 contract ConfigureDev is Script {
     // dev deployments
-    address constant ORACLE  = 0x60d29E637CeA469d5855dcB9f1fC1864D2FB6F45;
-    address constant ADAPTER = 0xE09ad06c3DFefAC759388b0492D8E864b06440F6;
+    address constant ORACLE  = 0x0735787c7eA8d8B60Ae87cC27c724484E4488043;
+    address constant ADAPTER = 0x3aBEe5638d93d792c9b282f0204e925f9A50C09C;
 
     // circuit breaker tiers (bps)
     uint256 constant CB_DEFAULT  = 5000;  // 50% — single stocks
