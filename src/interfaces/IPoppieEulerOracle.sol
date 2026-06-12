@@ -6,10 +6,10 @@ pragma solidity >=0.8.24;
 interface IPoppieEulerOracle {
     struct AssetConfig {
         bool configured;
-        bool paused;                      // keeper-paused; getPrice reverts, admin unpauses
+        bool paused;                      // getPrice reverts while true
         uint256 circuitBreakerThreshold;  // per-push max move in bps; 0 disables
         uint256 cumulativeDeviationCap;   // max total move from anchor in bps; 0 disables
-        int256 lastPrice;                 // 18 decimals
+        int256 lastPrice;                 // 18 decimals; zeroed on pause
         uint256 lastPriceTimestamp;       // block.timestamp of last write
         int256 anchorPrice;               // reference price for cumulative check
         uint256 anchorTimestamp;          // when the anchor was set
@@ -76,17 +76,20 @@ interface IPoppieEulerOracle {
     // ── Keeper ──────────────────────────────────────────────────────────
 
     /// @notice Push batch of 18-decimal prices. Keeper-only, subject to both guards.
-    ///         If an asset is paused, a successful push (passing both guards against
-    ///         the admin-set reference price) automatically unpauses it. This ensures
-    ///         the first post-pause price is validated before the asset goes live.
+    ///         If an asset is paused, its lastPrice was zeroed. The keeper cannot
+    ///         auto-unpause until admin calls adminSetPrice to set a non-zero reference.
+    ///         Once a reference exists, a successful push (passing both guards)
+    ///         automatically unpauses the asset.
     /// @param assets Token addresses.
     /// @param prices Corresponding 18-decimal USD prices (must be > 0).
     function keeperPushPrices(address[] calldata assets, int256[] calldata prices) external;
 
     /// @notice Pause one or more assets. getPrice will revert for paused assets.
     ///         Callable by keeper or admin (time-critical: keeper detects halts first).
-    ///         To unpause: admin calls adminSetPrice to set the reference price, then
-    ///         the keeper's next successful push (in-band) automatically unpauses.
+    ///         To unpause: admin calls adminSetPrice (sets non-zero reference), then
+    ///         the keeper's next successful push (validated against reference)
+    ///         automatically unpauses. The keeper cannot unpause without admin
+    ///         setting the reference first (lastPrice is zeroed on pause).
     /// @param assets Token addresses to pause.
     function pauseAssets(address[] calldata assets) external;
 

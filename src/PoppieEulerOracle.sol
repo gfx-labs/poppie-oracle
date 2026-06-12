@@ -113,10 +113,12 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
             // guard 2: cumulative deviation from rolling anchor
             _checkAndUpdateAnchor(assets[i], prices[i]);
 
-            // if paused, a successful push (passing both guards against
-            // the admin-set reference price) automatically unpauses.
-            // this ensures the first post-pause price is validated.
+            // if paused: auto-unpause only when admin has set a non-zero
+            // reference via adminSetPrice (lastPrice was zeroed on pause).
+            // this ensures the keeper can never unpause without admin review.
             if (_assetConfigs[assets[i]].paused) {
+                if (oldPrice == 0) revert AssetPaused(assets[i]);
+                // guards passed against admin-set reference — safe to unpause
                 _assetConfigs[assets[i]].paused = false;
                 emit AssetUnpaused(assets[i]);
             }
@@ -137,6 +139,9 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
             if (!_assetConfigs[assets[i]].configured) revert AssetNotConfigured(assets[i]);
             if (_assetConfigs[assets[i]].paused) revert AssetPaused(assets[i]);
             _assetConfigs[assets[i]].paused = true;
+            // zero the price so admin must set a reference before keeper can unpause
+            _assetConfigs[assets[i]].lastPrice = 0;
+            _assetConfigs[assets[i]].lastPriceTimestamp = 0;
             emit AssetPausedEvent(assets[i]);
         }
     }

@@ -413,70 +413,90 @@ contract PoppieEulerOracleTest is Test {
         oracle.pauseAssets(_arr(address(token)));
     }
 
-    function test_pause_keeperPushUnpauses() public {
+    function test_pause_zerosLastPrice() public {
         _push(100e18);
-        // pause
         vm.prank(keeper);
         oracle.pauseAssets(_arr(address(token)));
-        // admin sets recovery reference price
+        // lastPrice is zeroed
+        assertEq(oracle.getAssetConfig(address(token)).lastPrice, 0);
+    }
+
+    function test_pause_keeperCannotUnpauseWithoutAdminReference() public {
+        _push(100e18);
+        vm.prank(keeper);
+        oracle.pauseAssets(_arr(address(token)));
+        // keeper tries to push — lastPrice is 0 (admin hasn't set reference)
+        int256[] memory p = new int256[](1);
+        p[0] = 101e18;
+        vm.prank(keeper);
+        vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.AssetPaused.selector, address(token)));
+        oracle.keeperPushPrices(_arr(address(token)), p);
+    }
+
+    function test_pause_keeperUnpausesAfterAdminReference() public {
+        _push(100e18);
+        vm.prank(keeper);
+        oracle.pauseAssets(_arr(address(token)));
+        // admin sets recovery reference
         vm.prank(admin);
         oracle.adminSetPrice(address(token), 105e18);
         // still paused — getPrice reverts
         vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.AssetPaused.selector, address(token)));
         oracle.getPrice(address(token));
-        // keeper pushes an in-band price → auto-unpauses
+        // keeper pushes in-band price → auto-unpauses
         int256[] memory p = new int256[](1);
-        p[0] = 106e18; // within 5000 bps of 105e18
+        p[0] = 106e18;
         vm.prank(keeper);
         oracle.keeperPushPrices(_arr(address(token)), p);
         // now live
         assertEq(oracle.getPrice(address(token)), 106e18);
+        assertFalse(oracle.getAssetConfig(address(token)).paused);
     }
 
-    function test_pause_keeperPushRejectsOutOfBand() public {
+    function test_pause_keeperRejectsOutOfBandEvenWithReference() public {
         _push(100e18);
         vm.prank(keeper);
         oracle.pauseAssets(_arr(address(token)));
-        // admin sets reference
         vm.prank(admin);
         oracle.adminSetPrice(address(token), 100e18);
-        // keeper tries to push way out of band
+        // keeper pushes way out of band
         int256[] memory p = new int256[](1);
-        p[0] = 200e18; // +100%, way over 5000 bps threshold
+        p[0] = 200e18;
         vm.prank(keeper);
         vm.expectRevert(); // CircuitBreakerTriggered
         oracle.keeperPushPrices(_arr(address(token)), p);
         // still paused
-        vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.AssetPaused.selector, address(token)));
-        oracle.getPrice(address(token));
+        assertTrue(oracle.getAssetConfig(address(token)).paused);
     }
 
     function test_pause_adminSetPriceDoesNotUnpause() public {
         _push(100e18);
         vm.prank(keeper);
         oracle.pauseAssets(_arr(address(token)));
-        // admin sets price — does NOT unpause
         vm.prank(admin);
         oracle.adminSetPrice(address(token), 200e18);
+        // still paused
         vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.AssetPaused.selector, address(token)));
         oracle.getPrice(address(token));
+        assertTrue(oracle.getAssetConfig(address(token)).paused);
     }
 
     function test_pause_fullRecoveryFlow() public {
-        // normal price
         _push(100e18);
-        // corporate action — keeper pauses
+        // 1. corporate action — keeper pauses (price zeroed)
         vm.prank(keeper);
         oracle.pauseAssets(_arr(address(token)));
-        // admin reviews and sets the post-event reference price
+        assertEq(oracle.getAssetConfig(address(token)).lastPrice, 0);
+        // 2. admin reviews and sets post-event reference (still paused)
         vm.prank(admin);
-        oracle.adminSetPrice(address(token), 150e18); // big move, bypasses guards
-        // keeper's next run pushes a market price near the reference
+        oracle.adminSetPrice(address(token), 150e18);
+        assertTrue(oracle.getAssetConfig(address(token)).paused);
+        // 3. keeper pushes validated price → auto-unpauses
         int256[] memory p = new int256[](1);
-        p[0] = 152e18; // ~1.3% from reference, well within guards
+        p[0] = 152e18;
         vm.prank(keeper);
         oracle.keeperPushPrices(_arr(address(token)), p);
-        // asset is live again with the keeper's validated price
+        // 4. asset is live with keeper's validated price
         assertEq(oracle.getPrice(address(token)), 152e18);
         assertFalse(oracle.getAssetConfig(address(token)).paused);
     }
