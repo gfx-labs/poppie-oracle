@@ -103,12 +103,12 @@ contract ConfigureDev is Script {
 
         // convert fixed arrays to dynamic for the contract call
         address[] memory addrs = new address[](25);
-        uint256[] memory cbs = new uint256[](25);
-        uint256[] memory caps = new uint256[](25);
+        uint16[] memory cbs = new uint16[](25);
+        uint16[] memory caps = new uint16[](25);
         for (uint256 i = 0; i < 25; i++) {
             addrs[i] = tokens[i];
-            cbs[i] = cb[i];
-            caps[i] = cumCap[i];
+            cbs[i] = uint16(cb[i]);
+            caps[i] = uint16(cumCap[i]);
         }
 
         vm.startBroadcast(deployerKey);

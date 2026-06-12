@@ -39,12 +39,12 @@ contract OracleHandler is Test {
 
     /// Keeper pushes within the circuit-breaker band (so calls succeed).
     function pushPrice(uint256 seed) public {
-        int256 last = oracle.getAssetConfig(token).lastPrice;
+        uint128 last = oracle.getAssetConfig(token).lastPrice;
         uint256 base = last > 0 ? uint256(last) : 100e18;
         uint256 next = bound(seed, (base * 60) / 100, (base * 140) / 100);
         if (next == 0) next = 1;
-        int256[] memory p = new int256[](1);
-        p[0] = int256(next);
+        uint128[] memory p = new uint128[](1);
+        p[0] = uint128(next);
         vm.prank(keeper);
         try oracle.keeperPushPrices(_arr(token), p) {} catch {}
     }
@@ -53,7 +53,7 @@ contract OracleHandler is Test {
     function adminForce(uint256 seed) public {
         uint256 next = bound(seed, 1, 1e30);
         vm.prank(admin);
-        try oracle.adminSetPrice(token, int256(next)) {} catch {}
+        try oracle.adminSetPrice(token, uint128(next)) {} catch {}
     }
 
     function warp(uint256 secs) public {
@@ -76,14 +76,14 @@ contract PoppieEulerOracleInvariantTest is StdInvariant, Test {
     address keeper = address(0xBE);
     address aAdmin = address(0xA1);
     address constant UNIT = address(840);
-    uint256 constant CB = 5000;
+    uint16 constant CB = 5000;
 
     function setUp() public {
         token = new MockERC20("T", "T", 18);
         oracle = new PoppieEulerOracle(admin, keeper, 3600, 86400);
         adapter = new PoppieEulerAdapter(address(oracle), aAdmin, UNIT, 18);
 
-        uint256[] memory t = new uint256[](1);
+        uint16[] memory t = new uint16[](1);
         address[] memory a = new address[](1);
         a[0] = address(token);
         t[0] = CB;
@@ -93,7 +93,7 @@ contract PoppieEulerOracleInvariantTest is StdInvariant, Test {
         vm.prank(aAdmin);
         adapter.registerBase(address(token), dec);
 
-        int256[] memory p = new int256[](1);
+        uint128[] memory p = new uint128[](1);
         p[0] = 100e18;
         vm.prank(keeper);
         oracle.keeperPushPrices(a, p);

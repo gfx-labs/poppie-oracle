@@ -9,13 +9,13 @@ import {MockERC20} from "./mocks/MockERC20.sol";
 contract PoppieEulerOracleTest is Test {
     // Mirror events for expectEmit assertions
     event PricesRefreshed(address[] assets);
-    event AssetConfigured(address indexed asset, uint256 circuitBreakerThreshold, uint256 cumulativeDeviationCap);
-    event AssetThresholdsUpdated(address indexed asset, uint256 circuitBreakerThreshold, uint256 cumulativeDeviationCap);
+    event AssetConfigured(address indexed asset, uint16 circuitBreakerThreshold, uint16 cumulativeDeviationCap);
+    event AssetThresholdsUpdated(address indexed asset, uint16 circuitBreakerThreshold, uint16 cumulativeDeviationCap);
     event KeeperUpdated(address indexed oldKeeper, address indexed newKeeper);
     event AdminTransferStarted(address indexed currentAdmin, address indexed pendingAdmin);
     event AdminTransferred(address indexed oldAdmin, address indexed newAdmin);
     event MaxPriceAgeUpdated(uint256 oldValue, uint256 newValue);
-    event AdminPriceForced(address indexed asset, int256 price);
+    event AdminPriceForced(address indexed asset, uint128 price);
     event OracleDeployed(address indexed admin, address indexed keeper, uint256 maxPriceAge, uint256 anchorWindow);
 
     PoppieEulerOracle oracle;
@@ -26,14 +26,14 @@ contract PoppieEulerOracleTest is Test {
     address user = address(0xCC);
 
     uint256 constant MAX_AGE = 3600;
-    uint256 constant CB = 5000; // 50% bps
+    uint16 constant CB = 5000; // 50% bps
 
     function setUp() public {
         token = new MockERC20("AAPLon", "AAPLon", 18);
         oracle = new PoppieEulerOracle(admin, keeper, MAX_AGE, 86400);
 
         address[] memory a = new address[](1);
-        uint256[] memory t = new uint256[](1);
+        uint16[] memory t = new uint16[](1);
         a[0] = address(token);
         t[0] = CB;
         vm.prank(admin);
@@ -45,8 +45,8 @@ contract PoppieEulerOracleTest is Test {
         r[0] = x;
     }
 
-    function _push(int256 price) internal {
-        int256[] memory p = new int256[](1);
+    function _push(uint128 price) internal {
+        uint128[] memory p = new uint128[](1);
         p[0] = price;
         vm.prank(keeper);
         oracle.keeperPushPrices(_arr(address(token)), p);
@@ -87,7 +87,7 @@ contract PoppieEulerOracleTest is Test {
 
     function test_configureAssets_emitsEvent() public {
         MockERC20 t2 = new MockERC20("Y", "Y", 18);
-        uint256[] memory th = new uint256[](1);
+        uint16[] memory th = new uint16[](1);
         th[0] = CB;
         vm.expectEmit(true, false, false, true);
         emit AssetConfigured(address(t2), CB, CB);
@@ -97,14 +97,14 @@ contract PoppieEulerOracleTest is Test {
 
     function test_configureAssets_revert_notAdmin() public {
         address[] memory a = new address[](1);
-        uint256[] memory t = new uint256[](1);
+        uint16[] memory t = new uint16[](1);
         vm.prank(user);
         vm.expectRevert(IPoppieEulerOracle.OnlyAdmin.selector);
         oracle.configureAssets(a, t, t);
     }
 
     function test_configureAssets_revert_alreadyConfigured() public {
-        uint256[] memory t = new uint256[](1);
+        uint16[] memory t = new uint16[](1);
         t[0] = CB;
         vm.prank(admin);
         vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.AssetAlreadyConfigured.selector, address(token)));
@@ -113,7 +113,7 @@ contract PoppieEulerOracleTest is Test {
 
     function test_configureAssets_revert_lengthMismatch() public {
         address[] memory a = new address[](2);
-        uint256[] memory t = new uint256[](1);
+        uint16[] memory t = new uint16[](1);
         vm.prank(admin);
         vm.expectRevert(IPoppieEulerOracle.LengthMismatch.selector);
         oracle.configureAssets(a, t, t);
@@ -127,7 +127,7 @@ contract PoppieEulerOracleTest is Test {
     }
 
     function test_push_emitsPricesRefreshed() public {
-        int256[] memory p = new int256[](1);
+        uint128[] memory p = new uint128[](1);
         p[0] = 175.23e18;
         vm.expectEmit(false, false, false, true);
         emit PricesRefreshed(_arr(address(token)));
@@ -136,7 +136,7 @@ contract PoppieEulerOracleTest is Test {
     }
 
     function test_push_revert_notKeeper() public {
-        int256[] memory p = new int256[](1);
+        uint128[] memory p = new uint128[](1);
         p[0] = 1e18;
         vm.prank(user);
         vm.expectRevert(IPoppieEulerOracle.OnlyKeeper.selector);
@@ -144,7 +144,7 @@ contract PoppieEulerOracleTest is Test {
     }
 
     function test_push_revert_invalidPrice() public {
-        int256[] memory p = new int256[](1);
+        uint128[] memory p = new uint128[](1);
         p[0] = 0;
         vm.prank(keeper);
         vm.expectRevert(IPoppieEulerOracle.InvalidPrice.selector);
@@ -152,8 +152,8 @@ contract PoppieEulerOracleTest is Test {
     }
 
     function test_push_revert_negativePrice() public {
-        int256[] memory p = new int256[](1);
-        p[0] = -1;
+        uint128[] memory p = new uint128[](1);
+        p[0] = 0;
         vm.prank(keeper);
         vm.expectRevert(IPoppieEulerOracle.InvalidPrice.selector);
         oracle.keeperPushPrices(_arr(address(token)), p);
@@ -161,7 +161,7 @@ contract PoppieEulerOracleTest is Test {
 
     function test_push_revert_notConfigured() public {
         MockERC20 t2 = new MockERC20("X", "X", 18);
-        int256[] memory p = new int256[](1);
+        uint128[] memory p = new uint128[](1);
         p[0] = 1e18;
         vm.prank(keeper);
         vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.AssetNotConfigured.selector, address(t2)));
@@ -170,7 +170,7 @@ contract PoppieEulerOracleTest is Test {
 
     function test_push_revert_lengthMismatch() public {
         address[] memory a = new address[](2);
-        int256[] memory p = new int256[](1);
+        uint128[] memory p = new uint128[](1);
         vm.prank(keeper);
         vm.expectRevert(IPoppieEulerOracle.LengthMismatch.selector);
         oracle.keeperPushPrices(a, p);
@@ -186,7 +186,7 @@ contract PoppieEulerOracleTest is Test {
 
     function test_cb_exceedsThreshold() public {
         _push(100e18);
-        int256[] memory p = new int256[](1);
+        uint128[] memory p = new uint128[](1);
         p[0] = 160e18; // +60%, exceeds 50%
         vm.prank(keeper);
         vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.CircuitBreakerTriggered.selector, address(token), 6000, CB));
@@ -276,7 +276,7 @@ contract PoppieEulerOracleTest is Test {
 
     function test_adminSetPrice_multipleAssets() public {
         MockERC20 t2 = new MockERC20("Y", "Y", 18);
-        uint256[] memory th = new uint256[](1);
+        uint16[] memory th = new uint16[](1);
         th[0] = CB;
         vm.prank(admin);
         oracle.configureAssets(_arr(address(t2)), th, th);
@@ -434,7 +434,7 @@ contract PoppieEulerOracleTest is Test {
         vm.prank(keeper);
         oracle.pauseAssets(_arr(address(token)));
         // keeper tries to push — lastPrice is 0 (admin hasn't set reference)
-        int256[] memory p = new int256[](1);
+        uint128[] memory p = new uint128[](1);
         p[0] = 101e18;
         vm.prank(keeper);
         vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.AssetPaused.selector, address(token)));
@@ -452,7 +452,7 @@ contract PoppieEulerOracleTest is Test {
         vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.AssetPaused.selector, address(token)));
         oracle.getPrice(address(token));
         // keeper pushes in-band price → auto-unpauses
-        int256[] memory p = new int256[](1);
+        uint128[] memory p = new uint128[](1);
         p[0] = 106e18;
         vm.prank(keeper);
         oracle.keeperPushPrices(_arr(address(token)), p);
@@ -468,7 +468,7 @@ contract PoppieEulerOracleTest is Test {
         vm.prank(admin);
         oracle.adminSetPrice(address(token), 100e18);
         // keeper pushes way out of band
-        int256[] memory p = new int256[](1);
+        uint128[] memory p = new uint128[](1);
         p[0] = 200e18;
         vm.prank(keeper);
         vm.expectRevert(); // CircuitBreakerTriggered
@@ -500,7 +500,7 @@ contract PoppieEulerOracleTest is Test {
         oracle.adminSetPrice(address(token), 150e18);
         assertTrue(oracle.getAssetConfig(address(token)).paused);
         // 3. keeper pushes validated price → auto-unpauses
-        int256[] memory p = new int256[](1);
+        uint128[] memory p = new uint128[](1);
         p[0] = 152e18;
         vm.prank(keeper);
         oracle.keeperPushPrices(_arr(address(token)), p);

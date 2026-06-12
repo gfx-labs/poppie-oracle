@@ -23,7 +23,7 @@ contract PoppieEulerAdapterTest is Test {
 
     address constant UNIT = address(840);
     uint8 constant UNIT_DEC = 18;
-    uint256 constant CB = 5000;
+    uint16 constant CB = 5000;
 
     event AdapterDeployed(
         address indexed master,
@@ -41,7 +41,7 @@ contract PoppieEulerAdapterTest is Test {
         adapter = new PoppieEulerAdapter(address(oracle), aAdmin, UNIT, UNIT_DEC);
 
         address[] memory a = new address[](3);
-        uint256[] memory t = new uint256[](3);
+        uint16[] memory t = new uint16[](3);
         a[0] = address(token18); a[1] = address(token6); a[2] = address(token8);
         t[0] = CB; t[1] = CB; t[2] = CB;
         vm.prank(admin);
@@ -55,7 +55,7 @@ contract PoppieEulerAdapterTest is Test {
         vm.stopPrank();
 
         // seed prices
-        int256[] memory p = new int256[](3);
+        uint128[] memory p = new uint128[](3);
         p[0] = 175.23e18; p[1] = 1e18; p[2] = 67000e18;
         vm.prank(keeper);
         oracle.keeperPushPrices(a, p);
@@ -222,18 +222,18 @@ contract PoppieEulerAdapterTest is Test {
         uint256 priceRaw
     ) public {
         baseDec = uint8(bound(baseDec, 0, 18));
-        int256 price18 = int256(bound(priceRaw, 1e14, 1e25));
+        uint128 price18 = uint128(bound(priceRaw, 1e14, 1e25));
         inAmount = bound(inAmount, 0, 1e12 * (10 ** uint256(baseDec)));
 
         MockERC20 t = new MockERC20("F", "F", baseDec);
-        uint256[] memory th = new uint256[](1);
+        uint16[] memory th = new uint16[](1);
         th[0] = 0; // disable CB for arbitrary price
         vm.prank(admin);
         oracle.configureAssets(_arr(address(t)), th, th);
         uint8 dec = t.decimals();
         vm.prank(aAdmin);
         adapter.registerBase(address(t), dec);
-        int256[] memory p = new int256[](1);
+        uint128[] memory p = new uint128[](1);
         p[0] = price18;
         vm.prank(keeper);
         oracle.keeperPushPrices(_arr(address(t)), p);
@@ -281,16 +281,16 @@ contract PoppieEulerAdapterTest is Test {
 
     function testFuzz_getQuote_zeroIn(uint8 baseDec, uint256 priceRaw) public {
         baseDec = uint8(bound(baseDec, 0, 18));
-        int256 price18 = int256(bound(priceRaw, 1e14, 1e25));
+        uint128 price18 = uint128(bound(priceRaw, 1e14, 1e25));
         MockERC20 t = new MockERC20("F", "F", baseDec);
-        uint256[] memory th = new uint256[](1);
+        uint16[] memory th = new uint16[](1);
         th[0] = 0;
         vm.prank(admin);
         oracle.configureAssets(_arr(address(t)), th, th);
         uint8 dec = t.decimals();
         vm.prank(aAdmin);
         adapter.registerBase(address(t), dec);
-        int256[] memory p = new int256[](1);
+        uint128[] memory p = new uint128[](1);
         p[0] = price18;
         vm.prank(keeper);
         oracle.keeperPushPrices(_arr(address(t)), p);

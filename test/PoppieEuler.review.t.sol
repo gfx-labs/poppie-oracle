@@ -31,8 +31,8 @@ contract PoppieEulerReviewTest is Test {
     function _configureAndRegister(
         PoppieEulerAdapter adapter,
         MockERC20 t,
-        uint256 cb,
-        int256 price
+        uint16 cb,
+        uint128 price
     ) internal {
         _configureAndRegister(adapter, t, cb, cb, price);
     }
@@ -40,20 +40,20 @@ contract PoppieEulerReviewTest is Test {
     function _configureAndRegister(
         PoppieEulerAdapter adapter,
         MockERC20 t,
-        uint256 cb,
-        uint256 cap,
-        int256 price
+        uint16 cb,
+        uint16 cap,
+        uint128 price
     ) internal {
-        uint256[] memory th = new uint256[](1);
+        uint16[] memory th = new uint16[](1);
         th[0] = cb;
-        uint256[] memory caps = new uint256[](1);
+        uint16[] memory caps = new uint16[](1);
         caps[0] = cap;
         vm.prank(admin);
         oracle.configureAssets(_arr(address(t)), th, caps);
         uint8 dec = t.decimals();
         vm.prank(aAdmin);
         adapter.registerBase(address(t), dec);
-        int256[] memory p = new int256[](1);
+        uint128[] memory p = new uint128[](1);
         p[0] = price;
         vm.prank(keeper);
         oracle.keeperPushPrices(_arr(address(t)), p);
@@ -95,7 +95,7 @@ contract PoppieEulerReviewTest is Test {
     ) public {
         uoaDec = uint8(bound(uoaDec, 0, 18));
         baseDec = uint8(bound(baseDec, 0, 18));
-        int256 price18 = int256(bound(priceRaw, 1e14, 1e25));
+        uint128 price18 = uint128(bound(priceRaw, 1e14, 1e25));
         inAmount = bound(inAmount, 0, 1e12 * (10 ** uint256(baseDec)));
 
         PoppieEulerAdapter adapter =
@@ -121,7 +121,7 @@ contract PoppieEulerReviewTest is Test {
         _configureAndRegister(adapter, t, 5000, 100e18); // 50% per-step, 50% cumulative cap
 
         // First push: +40% (within both the 50% step breaker and 50% cumulative cap).
-        int256[] memory p = new int256[](1);
+        uint128[] memory p = new uint128[](1);
         p[0] = 140e18;
         vm.prank(keeper);
         oracle.keeperPushPrices(_arr(address(t)), p);
@@ -144,7 +144,7 @@ contract PoppieEulerReviewTest is Test {
         _configureAndRegister(adapter, t, 5000, 5000, 100e18); // explicit 50%/50%
 
         // Push +40% (within both guards).
-        int256[] memory p = new int256[](1);
+        uint128[] memory p = new uint128[](1);
         p[0] = 140e18;
         vm.prank(keeper);
         oracle.keeperPushPrices(_arr(address(t)), p);
@@ -168,11 +168,11 @@ contract PoppieEulerReviewTest is Test {
 
     function test_setMaxPriceAge_zero_disablesFreshnessEntirely() public {
         MockERC20 t = new MockERC20("AAPLon", "AAPLon", 18);
-        uint256[] memory th = new uint256[](1);
+        uint16[] memory th = new uint16[](1);
         th[0] = 0;
         vm.prank(admin);
         oracle.configureAssets(_arr(address(t)), th, th);
-        int256[] memory p = new int256[](1);
+        uint128[] memory p = new uint128[](1);
         p[0] = 100e18;
         vm.prank(keeper);
         oracle.keeperPushPrices(_arr(address(t)), p);
@@ -208,11 +208,11 @@ contract PoppieEulerReviewTest is Test {
 
     function test_adminSetPrice_acceptsAbsurdValue_noSanityBound() public {
         MockERC20 t = new MockERC20("AAPLon", "AAPLon", 18);
-        uint256[] memory th = new uint256[](1);
+        uint16[] memory th = new uint16[](1);
         th[0] = 5000;
         vm.prank(admin);
         oracle.configureAssets(_arr(address(t)), th, th);
-        int256[] memory p = new int256[](1);
+        uint128[] memory p = new uint128[](1);
         p[0] = 100e18;
         vm.prank(keeper);
         oracle.keeperPushPrices(_arr(address(t)), p);
@@ -232,11 +232,11 @@ contract PoppieEulerReviewTest is Test {
 
     function test_getPrice_noUnderflow_sameBlock() public {
         MockERC20 t = new MockERC20("AAPLon", "AAPLon", 18);
-        uint256[] memory th = new uint256[](1);
+        uint16[] memory th = new uint16[](1);
         th[0] = 0;
         vm.prank(admin);
         oracle.configureAssets(_arr(address(t)), th, th);
-        int256[] memory p = new int256[](1);
+        uint128[] memory p = new uint128[](1);
         p[0] = 100e18;
         vm.prank(keeper);
         oracle.keeperPushPrices(_arr(address(t)), p);
