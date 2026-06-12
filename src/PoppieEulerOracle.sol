@@ -111,7 +111,7 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
             cfg.lastPrice = prices[i];
             cfg.lastPriceTimestamp = ts;
 
-            unchecked { ++i; }
+            ++i;
         }
 
         emit PricesRefreshed(assets);
@@ -130,7 +130,7 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
             cfg.anchorPrice = 0;
             cfg.anchorTimestamp = 0;
             emit AssetPausedEvent(assets[i]);
-            unchecked { ++i; }
+            ++i;
         }
     }
 
@@ -158,7 +158,7 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
                 anchorPrice: 0
             });
             emit AssetConfigured(assets[i], circuitBreakerThresholds[i], cumulativeDeviationCaps[i]);
-            unchecked { ++i; }
+            ++i;
         }
     }
 
@@ -242,11 +242,9 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
     }
 
     function _deviationBps(uint128 a, uint128 b) internal pure returns (uint256) {
-        unchecked {
-            uint256 diff = a >= b
-                ? uint256(a - b)
-                : uint256(b - a);
-            return diff * BPS_DENOMINATOR / uint256(b);
-        }
+        uint256 diff = a >= b
+            ? uint256(a - b)
+            : uint256(b - a);
+        return diff * BPS_DENOMINATOR / uint256(b);
     }
 }
