@@ -95,10 +95,9 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
         if (assets.length != prices.length) revert LengthMismatch();
 
         for (uint256 i = 0; i < assets.length; ++i) {
-            // validate price is positive, asset is registered, and not paused
+            // validate price is positive and asset is registered
             if (prices[i] <= 0) revert InvalidPrice();
             if (!_assetConfigs[assets[i]].configured) revert AssetNotConfigured(assets[i]);
-            if (_assetConfigs[assets[i]].paused) revert AssetPaused(assets[i]);
 
             int256 oldPrice = _assetConfigs[assets[i]].lastPrice;
 
@@ -113,6 +112,14 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
 
             // guard 2: cumulative deviation from rolling anchor
             _checkAndUpdateAnchor(assets[i], prices[i]);
+
+            // if paused, a successful push (passing both guards against
+            // the admin-set reference price) automatically unpauses.
+            // this ensures the first post-pause price is validated.
+            if (_assetConfigs[assets[i]].paused) {
+                _assetConfigs[assets[i]].paused = false;
+                emit AssetUnpaused(assets[i]);
+            }
 
             // update last price and timestamp
             _assetConfigs[assets[i]].lastPrice = prices[i];
@@ -131,16 +138,6 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
             if (_assetConfigs[assets[i]].paused) revert AssetPaused(assets[i]);
             _assetConfigs[assets[i]].paused = true;
             emit AssetPausedEvent(assets[i]);
-        }
-    }
-
-    /// @inheritdoc IPoppieEulerOracle
-    function unpauseAssets(address[] calldata assets) external override onlyAdmin {
-        for (uint256 i = 0; i < assets.length; ++i) {
-            if (!_assetConfigs[assets[i]].configured) revert AssetNotConfigured(assets[i]);
-            if (!_assetConfigs[assets[i]].paused) revert AssetNotPaused(assets[i]);
-            _assetConfigs[assets[i]].paused = false;
-            emit AssetUnpaused(assets[i]);
         }
     }
 

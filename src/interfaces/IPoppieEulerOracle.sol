@@ -31,7 +31,6 @@ interface IPoppieEulerOracle {
     error OnlyKeeperOrAdmin();
     error NoPendingAdmin();
     error AssetPaused(address asset);
-    error AssetNotPaused(address asset);
 
     // ── Events ──────────────────────────────────────────────────────────
 
@@ -77,19 +76,19 @@ interface IPoppieEulerOracle {
     // ── Keeper ──────────────────────────────────────────────────────────
 
     /// @notice Push batch of 18-decimal prices. Keeper-only, subject to both guards.
+    ///         If an asset is paused, a successful push (passing both guards against
+    ///         the admin-set reference price) automatically unpauses it. This ensures
+    ///         the first post-pause price is validated before the asset goes live.
     /// @param assets Token addresses.
     /// @param prices Corresponding 18-decimal USD prices (must be > 0).
     function keeperPushPrices(address[] calldata assets, int256[] calldata prices) external;
 
     /// @notice Pause one or more assets. getPrice will revert for paused assets.
     ///         Callable by keeper or admin (time-critical: keeper detects halts first).
+    ///         To unpause: admin calls adminSetPrice to set the reference price, then
+    ///         the keeper's next successful push (in-band) automatically unpauses.
     /// @param assets Token addresses to pause.
     function pauseAssets(address[] calldata assets) external;
-
-    /// @notice Unpause one or more assets. Admin-only (deliberate decision after
-    ///         verifying price data is good).
-    /// @param assets Token addresses to unpause.
-    function unpauseAssets(address[] calldata assets) external;
 
     // ── Admin ───────────────────────────────────────────────────────────
 
