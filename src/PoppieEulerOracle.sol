@@ -63,6 +63,10 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
     /// @inheritdoc IPoppieEulerOracle
     function getPrice(address asset) external view override returns (int256) {
         AssetConfig storage cfg = _assetConfigs[asset];
+
+        // revert if paused by keeper
+        if (cfg.paused) revert AssetPaused(asset);
+
         int256 price = cfg.lastPrice;
 
         // revert if no price has been pushed yet
@@ -91,9 +95,10 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
         if (assets.length != prices.length) revert LengthMismatch();
 
         for (uint256 i = 0; i < assets.length; ++i) {
-            // validate price is positive and asset is registered
+            // validate price is positive, asset is registered, and not paused
             if (prices[i] <= 0) revert InvalidPrice();
             if (!_assetConfigs[assets[i]].configured) revert AssetNotConfigured(assets[i]);
+            if (_assetConfigs[assets[i]].paused) revert AssetPaused(assets[i]);
 
             int256 oldPrice = _assetConfigs[assets[i]].lastPrice;
 
@@ -117,6 +122,28 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
         emit PricesRefreshed(assets);
     }
 
+    /// @inheritdoc IPoppieEulerOracle
+    function pauseAssets(address[] calldata assets) external override {
+        // keeper or admin can pause (time-critical)
+        if (msg.sender != keeper && msg.sender != admin) revert OnlyKeeperOrAdmin();
+        for (uint256 i = 0; i < assets.length; ++i) {
+            if (!_assetConfigs[assets[i]].configured) revert AssetNotConfigured(assets[i]);
+            if (_assetConfigs[assets[i]].paused) revert AssetPaused(assets[i]);
+            _assetConfigs[assets[i]].paused = true;
+            emit AssetPausedEvent(assets[i]);
+        }
+    }
+
+    /// @inheritdoc IPoppieEulerOracle
+    function unpauseAssets(address[] calldata assets) external override onlyAdmin {
+        for (uint256 i = 0; i < assets.length; ++i) {
+            if (!_assetConfigs[assets[i]].configured) revert AssetNotConfigured(assets[i]);
+            if (!_assetConfigs[assets[i]].paused) revert AssetNotPaused(assets[i]);
+            _assetConfigs[assets[i]].paused = false;
+            emit AssetUnpaused(assets[i]);
+        }
+    }
+
     // ── Admin ───────────────────────────────────────────────────────────
 
     /// @inheritdoc IPoppieEulerOracle
@@ -134,6 +161,7 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
             // initialize asset with thresholds and zeroed price state
             _assetConfigs[assets[i]] = AssetConfig({
                 configured: true,
+                paused: false,
                 circuitBreakerThreshold: circuitBreakerThresholds[i],
                 cumulativeDeviationCap: cumulativeDeviationCaps[i],
                 lastPrice: 0,

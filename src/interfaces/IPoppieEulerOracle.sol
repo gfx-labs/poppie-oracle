@@ -6,6 +6,7 @@ pragma solidity >=0.8.24;
 interface IPoppieEulerOracle {
     struct AssetConfig {
         bool configured;
+        bool paused;                      // keeper-paused; getPrice reverts, admin unpauses
         uint256 circuitBreakerThreshold;  // per-push max move in bps; 0 disables
         uint256 cumulativeDeviationCap;   // max total move from anchor in bps; 0 disables
         int256 lastPrice;                 // 18 decimals
@@ -27,7 +28,10 @@ interface IPoppieEulerOracle {
     error CumulativeDeviationExceeded(address asset, uint256 deviationBps, uint256 cap);
     error OnlyAdmin();
     error OnlyKeeper();
+    error OnlyKeeperOrAdmin();
     error NoPendingAdmin();
+    error AssetPaused(address asset);
+    error AssetNotPaused(address asset);
 
     // ── Events ──────────────────────────────────────────────────────────
 
@@ -41,6 +45,8 @@ interface IPoppieEulerOracle {
     event MaxPriceAgeUpdated(uint256 oldValue, uint256 newValue);
     event AnchorWindowUpdated(uint256 oldValue, uint256 newValue);
     event AdminPriceForced(address indexed asset, int256 price);
+    event AssetPausedEvent(address indexed asset);
+    event AssetUnpaused(address indexed asset);
 
     // ── Views ───────────────────────────────────────────────────────────
 
@@ -74,6 +80,16 @@ interface IPoppieEulerOracle {
     /// @param assets Token addresses.
     /// @param prices Corresponding 18-decimal USD prices (must be > 0).
     function keeperPushPrices(address[] calldata assets, int256[] calldata prices) external;
+
+    /// @notice Pause one or more assets. getPrice will revert for paused assets.
+    ///         Callable by keeper or admin (time-critical: keeper detects halts first).
+    /// @param assets Token addresses to pause.
+    function pauseAssets(address[] calldata assets) external;
+
+    /// @notice Unpause one or more assets. Admin-only (deliberate decision after
+    ///         verifying price data is good).
+    /// @param assets Token addresses to unpause.
+    function unpauseAssets(address[] calldata assets) external;
 
     // ── Admin ───────────────────────────────────────────────────────────
 

@@ -378,4 +378,82 @@ contract PoppieEulerOracleTest is Test {
         vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.AssetNotConfigured.selector, address(t2)));
         oracle.setAssetThresholds(address(t2), 1000, 2000);
     }
+
+    // --- pause / unpause ---
+
+    function test_pauseAssets_keeper() public {
+        _push(100e18);
+        // keeper pauses
+        vm.prank(keeper);
+        oracle.pauseAssets(_arr(address(token)));
+        // getPrice reverts
+        vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.AssetPaused.selector, address(token)));
+        oracle.getPrice(address(token));
+        // push also reverts
+        int256[] memory p = new int256[](1);
+        p[0] = 101e18;
+        vm.prank(keeper);
+        vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.AssetPaused.selector, address(token)));
+        oracle.keeperPushPrices(_arr(address(token)), p);
+    }
+
+    function test_pauseAssets_admin() public {
+        _push(100e18);
+        // admin can also pause
+        vm.prank(admin);
+        oracle.pauseAssets(_arr(address(token)));
+        vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.AssetPaused.selector, address(token)));
+        oracle.getPrice(address(token));
+    }
+
+    function test_pauseAssets_revert_notKeeperOrAdmin() public {
+        vm.prank(user);
+        vm.expectRevert(IPoppieEulerOracle.OnlyKeeperOrAdmin.selector);
+        oracle.pauseAssets(_arr(address(token)));
+    }
+
+    function test_pauseAssets_revert_alreadyPaused() public {
+        vm.prank(keeper);
+        oracle.pauseAssets(_arr(address(token)));
+        vm.prank(keeper);
+        vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.AssetPaused.selector, address(token)));
+        oracle.pauseAssets(_arr(address(token)));
+    }
+
+    function test_unpauseAssets_adminOnly() public {
+        _push(100e18);
+        vm.prank(keeper);
+        oracle.pauseAssets(_arr(address(token)));
+        // keeper cannot unpause
+        vm.prank(keeper);
+        vm.expectRevert(IPoppieEulerOracle.OnlyAdmin.selector);
+        oracle.unpauseAssets(_arr(address(token)));
+        // admin unpauses
+        vm.prank(admin);
+        oracle.unpauseAssets(_arr(address(token)));
+        // getPrice works again
+        assertEq(oracle.getPrice(address(token)), 100e18);
+    }
+
+    function test_unpauseAssets_revert_notPaused() public {
+        vm.prank(admin);
+        vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.AssetNotPaused.selector, address(token)));
+        oracle.unpauseAssets(_arr(address(token)));
+    }
+
+    function test_adminSetPrice_unpausesBypass() public {
+        _push(100e18);
+        vm.prank(keeper);
+        oracle.pauseAssets(_arr(address(token)));
+        // adminSetPrice works on paused assets (recovery path)
+        vm.prank(admin);
+        oracle.adminSetPrice(address(token), 200e18);
+        // but asset is still paused — getPrice still reverts
+        vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.AssetPaused.selector, address(token)));
+        oracle.getPrice(address(token));
+        // admin must explicitly unpause
+        vm.prank(admin);
+        oracle.unpauseAssets(_arr(address(token)));
+        assertEq(oracle.getPrice(address(token)), 200e18);
+    }
 }
