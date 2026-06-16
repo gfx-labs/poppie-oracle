@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity >=0.8.24;
+pragma solidity 0.8.24;
 
 import {IPoppieEulerOracle} from "./interfaces/IPoppieEulerOracle.sol";
 
@@ -84,18 +84,19 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
 
             uint128 oldPrice = cfg.lastPrice;
 
-            // paused assets need admin reference (oldPrice != 0) before keeper can unpause
-            if (cfg.paused) {
-                if (oldPrice == 0) revert AssetPaused(assets[i]);
+            // require a seeded price before any keeper push. for a fresh asset admin must
+            // call adminSetPrice first; for a paused asset admin must set the recovery
+            // reference. this also makes both guards below unconditionally active.
+            if (oldPrice == 0) {
+                if (cfg.paused) revert AssetPaused(assets[i]);
+                revert PriceNotInitialized();
             }
 
             // guard 1: per-push circuit breaker
-            if (oldPrice != 0) {
-                uint256 threshold = uint256(cfg.circuitBreakerThreshold);
-                if (threshold != 0) {
-                    uint256 dev = _deviationBps(prices[i], oldPrice);
-                    if (dev > threshold) revert CircuitBreakerTriggered(assets[i], dev, threshold);
-                }
+            uint256 threshold = uint256(cfg.circuitBreakerThreshold);
+            if (threshold != 0) {
+                uint256 dev = _deviationBps(prices[i], oldPrice);
+                if (dev > threshold) revert CircuitBreakerTriggered(assets[i], dev, threshold);
             }
 
             // guard 2: cumulative deviation from rolling anchor
@@ -122,7 +123,7 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
         for (uint256 i = 0; i < assets.length; ++i) {
             AssetConfig storage cfg = _assetConfigs[assets[i]];
             if (!cfg.configured) revert AssetNotConfigured(assets[i]);
-            if (cfg.paused) revert AssetPaused(assets[i]);
+            if (cfg.paused) revert AssetAlreadyPaused(assets[i]);
             cfg.paused = true;
             cfg.lastPrice = 0;
             cfg.lastPriceTimestamp = 0;
@@ -145,6 +146,9 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
         }
         for (uint256 i = 0; i < assets.length; ++i) {
             if (_assetConfigs[assets[i]].configured) revert AssetAlreadyConfigured(assets[i]);
+            // require non-zero cumulative cap so the multi-step drift guard is always active.
+            // this is the only guard that defends a duplicate-asset batch in keeperPushPrices.
+            if (cumulativeDeviationCaps[i] == 0) revert InvalidConfig();
             _assetConfigs[assets[i]] = AssetConfig({
                 configured: true,
                 paused: false,
@@ -162,6 +166,8 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
     /// @inheritdoc IPoppieEulerOracle
     function setAssetThresholds(address asset, uint16 circuitBreakerThreshold, uint16 cumulativeDeviationCap) external override onlyAdmin {
         if (!_assetConfigs[asset].configured) revert AssetNotConfigured(asset);
+        // mirror the configureAssets invariant: cumulative cap must remain non-zero.
+        if (cumulativeDeviationCap == 0) revert InvalidConfig();
         _assetConfigs[asset].circuitBreakerThreshold = circuitBreakerThreshold;
         _assetConfigs[asset].cumulativeDeviationCap = cumulativeDeviationCap;
         emit AssetThresholdsUpdated(asset, circuitBreakerThreshold, cumulativeDeviationCap);

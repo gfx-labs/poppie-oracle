@@ -54,11 +54,12 @@ contract PoppieEulerAdapterTest is Test {
         adapter.registerBase(address(token8), token8.decimals());
         vm.stopPrank();
 
-        // seed prices
-        uint128[] memory p = new uint128[](3);
-        p[0] = 175.23e18; p[1] = 1e18; p[2] = 67000e18;
-        vm.prank(keeper);
-        oracle.keeperPushPrices(a, p);
+        // seed prices via admin (keeper pushes require a seeded oldPrice)
+        vm.startPrank(admin);
+        oracle.adminSetPrice(address(token18), 175.23e18);
+        oracle.adminSetPrice(address(token6), 1e18);
+        oracle.adminSetPrice(address(token8), 67000e18);
+        vm.stopPrank();
     }
 
     function _arr(address x) internal pure returns (address[] memory r) {
@@ -227,16 +228,16 @@ contract PoppieEulerAdapterTest is Test {
 
         MockERC20 t = new MockERC20("F", "F", baseDec);
         uint16[] memory th = new uint16[](1);
-        th[0] = 0; // disable CB for arbitrary price
+        th[0] = 10000; // cumulative cap must be non-zero; per-push breaker effectively wide
         vm.prank(admin);
         oracle.configureAssets(_arr(address(t)), th, th);
         uint8 dec = t.decimals();
         vm.prank(aAdmin);
         adapter.registerBase(address(t), dec);
-        uint128[] memory p = new uint128[](1);
-        p[0] = price18;
-        vm.prank(keeper);
-        oracle.keeperPushPrices(_arr(address(t)), p);
+        // admin seeds price directly so the fuzzed price is accepted without going
+        // through the keeper guards.
+        vm.prank(admin);
+        oracle.adminSetPrice(address(t), price18);
 
         // reference: baseDec in [0,18], UNIT_DEC = 18 => exp = baseDec >= 0 always
         uint256 expected = Math.mulDiv(inAmount, uint256(price18), 10 ** uint256(baseDec));
@@ -284,16 +285,14 @@ contract PoppieEulerAdapterTest is Test {
         uint128 price18 = uint128(bound(priceRaw, 1e14, 1e25));
         MockERC20 t = new MockERC20("F", "F", baseDec);
         uint16[] memory th = new uint16[](1);
-        th[0] = 0;
+        th[0] = 10000; // cumulative cap must be non-zero
         vm.prank(admin);
         oracle.configureAssets(_arr(address(t)), th, th);
         uint8 dec = t.decimals();
         vm.prank(aAdmin);
         adapter.registerBase(address(t), dec);
-        uint128[] memory p = new uint128[](1);
-        p[0] = price18;
-        vm.prank(keeper);
-        oracle.keeperPushPrices(_arr(address(t)), p);
+        vm.prank(admin);
+        oracle.adminSetPrice(address(t), price18);
 
         assertEq(adapter.getQuote(0, address(t), UNIT), 0);
     }

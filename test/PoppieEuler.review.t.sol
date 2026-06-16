@@ -44,19 +44,23 @@ contract PoppieEulerReviewTest is Test {
         uint16 cap,
         uint128 price
     ) internal {
+        // configureAssets now requires a non-zero cumulative cap; coerce zero
+        // values to the max so callers that previously passed cap=0 to "disable"
+        // the guard still exercise an effectively-permissive configuration.
+        uint16 effectiveCap = cap == 0 ? 10000 : cap;
         uint16[] memory th = new uint16[](1);
         th[0] = cb;
         uint16[] memory caps = new uint16[](1);
-        caps[0] = cap;
+        caps[0] = effectiveCap;
         vm.prank(admin);
         oracle.configureAssets(_arr(address(t)), th, caps);
         uint8 dec = t.decimals();
         vm.prank(aAdmin);
         adapter.registerBase(address(t), dec);
-        uint128[] memory p = new uint128[](1);
-        p[0] = price;
-        vm.prank(keeper);
-        oracle.keeperPushPrices(_arr(address(t)), p);
+        // admin seeds the initial price so the keeper push path is allowed.
+        // adminSetPrice bypasses both guards, so any price value is accepted.
+        vm.prank(admin);
+        oracle.adminSetPrice(address(t), price);
     }
 
     // ---------------------------------------------------------------------
@@ -169,13 +173,12 @@ contract PoppieEulerReviewTest is Test {
     function test_setMaxPriceAge_zero_disablesFreshnessEntirely() public {
         MockERC20 t = new MockERC20("AAPLon", "AAPLon", 18);
         uint16[] memory th = new uint16[](1);
-        th[0] = 0;
+        th[0] = 10000; // max cap (cumulativeDeviationCap must be non-zero)
         vm.prank(admin);
         oracle.configureAssets(_arr(address(t)), th, th);
-        uint128[] memory p = new uint128[](1);
-        p[0] = 100e18;
-        vm.prank(keeper);
-        oracle.keeperPushPrices(_arr(address(t)), p);
+        // admin seeds the initial price (keeper pushes require a seed)
+        vm.prank(admin);
+        oracle.adminSetPrice(address(t), 100e18);
 
         vm.prank(admin);
         oracle.setMaxPriceAge(0);
@@ -212,10 +215,8 @@ contract PoppieEulerReviewTest is Test {
         th[0] = 5000;
         vm.prank(admin);
         oracle.configureAssets(_arr(address(t)), th, th);
-        uint128[] memory p = new uint128[](1);
-        p[0] = 100e18;
-        vm.prank(keeper);
-        oracle.keeperPushPrices(_arr(address(t)), p);
+        vm.prank(admin);
+        oracle.adminSetPrice(address(t), 100e18); // seed
 
         // A 1e30 ("$1 trillion-per-token") fat-finger is accepted with no bound.
         vm.prank(admin);
@@ -233,13 +234,11 @@ contract PoppieEulerReviewTest is Test {
     function test_getPrice_noUnderflow_sameBlock() public {
         MockERC20 t = new MockERC20("AAPLon", "AAPLon", 18);
         uint16[] memory th = new uint16[](1);
-        th[0] = 0;
+        th[0] = 10000;
         vm.prank(admin);
         oracle.configureAssets(_arr(address(t)), th, th);
-        uint128[] memory p = new uint128[](1);
-        p[0] = 100e18;
-        vm.prank(keeper);
-        oracle.keeperPushPrices(_arr(address(t)), p);
+        vm.prank(admin);
+        oracle.adminSetPrice(address(t), 100e18);
         // Read in the same block: block.timestamp - lastPriceTimestamp == 0.
         assertEq(oracle.getPrice(address(t)), 100e18);
     }

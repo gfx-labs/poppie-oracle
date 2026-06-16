@@ -56,6 +56,16 @@ contract OracleHandler is Test {
         try oracle.adminSetPrice(token, uint128(next)) {} catch {}
     }
 
+    /// Pause the asset and seed an admin reference. Auto-unpause is exercised
+    /// by the next successful pushPrice() call from the handler.
+    function pauseAndRecover(uint256 seed) public {
+        vm.prank(keeper);
+        try oracle.pauseAssets(_arr(token)) {} catch {}
+        uint128 ref = uint128(bound(seed, 1, 1e26));
+        vm.prank(admin);
+        try oracle.adminSetPrice(token, ref) {} catch {}
+    }
+
     function warp(uint256 secs) public {
         vm.warp(block.timestamp + bound(secs, 1, 2 hours));
     }
@@ -93,18 +103,19 @@ contract PoppieEulerOracleInvariantTest is StdInvariant, Test {
         vm.prank(aAdmin);
         adapter.registerBase(address(token), dec);
 
-        uint128[] memory p = new uint128[](1);
-        p[0] = 100e18;
-        vm.prank(keeper);
-        oracle.keeperPushPrices(a, p);
+        // admin seeds the initial price; keeper pushes are exercised by the handler
+        vm.prank(admin);
+        oracle.adminSetPrice(address(token), 100e18);
 
         handler = new OracleHandler(oracle, adapter, address(token), keeper, admin, aAdmin);
         targetContract(address(handler));
     }
 
-    /// Stored price is always strictly positive once seeded.
+    /// Stored price is always strictly positive once seeded, except when
+    /// the asset is paused (which intentionally zeros all price state).
     function invariant_priceAlwaysPositive() public view {
-        assertGt(oracle.getAssetConfig(address(token)).lastPrice, 0);
+        IPoppieEulerOracle.AssetConfig memory cfg = oracle.getAssetConfig(address(token));
+        if (!cfg.paused) assertGt(cfg.lastPrice, 0);
     }
 
     /// lastPriceTimestamp never exceeds current block time.
