@@ -44,6 +44,7 @@ contract PoppieEulerAdapter is IPriceOracle {
     error DecimalsTooLarge(uint8 decimals);
     error UnsupportedQuote(address quote);
     error InvalidPrice();
+    error BaseIsUnitOfAccount();
 
     // ── Events ──────────────────────────────────────────────────────────
 
@@ -88,6 +89,11 @@ contract PoppieEulerAdapter is IPriceOracle {
     /// @param decimals The token's decimals (must be <= 18).
     function registerBase(address base, uint8 decimals) external onlyAdmin {
         if (base == address(0)) revert ZeroAddress();
+        // a base that equals the unit of account would have getQuote return
+        // `inAmount * price / 1e18`, which is meaningful but always wrong —
+        // the consumer expects `getQuote(x, unit, unit) == x`. We reject the
+        // configuration entirely rather than special-case the read path.
+        if (base == unitOfAccount) revert BaseIsUnitOfAccount();
         if (_baseInfo[base].registered) revert BaseAlreadyRegistered(base);
         if (decimals > MAX_DECIMALS) revert DecimalsTooLarge(decimals);
         _baseInfo[base] = BaseInfo({registered: true, decimals: decimals});

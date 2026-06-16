@@ -137,6 +137,12 @@ contract PoppieEulerAdapterTest is Test {
         adapter.registerBase(address(t), 19);
     }
 
+    function test_registerBase_revert_baseIsUnitOfAccount() public {
+        vm.prank(aAdmin);
+        vm.expectRevert(PoppieEulerAdapter.BaseIsUnitOfAccount.selector);
+        adapter.registerBase(UNIT, 18);
+    }
+
     function test_registerBase_explicitDecimals() public {
         MockERC20 t = new MockERC20("X", "X", 18);
         vm.prank(aAdmin);

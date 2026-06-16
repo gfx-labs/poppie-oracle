@@ -225,6 +225,60 @@ contract PoppieEulerOracleTest is Test {
         assertEq(oracle.getPrice(address(token)), 140e18);
     }
 
+    // --- Anchor rotation (A-1 / D-2): after `anchorWindow` elapses, the next
+    //     keeper push must rotate the anchor to the previous `lastPrice` and
+    //     evaluate drift against that freshly-rotated reference. ---
+
+    function test_anchor_rotatesToPreviousLastPriceAfterWindow() public {
+        // Seed = 100 (from setUp). First push: +40% to 140. Anchor still 100.
+        _push(140e18);
+        IPoppieEulerOracle.AssetConfig memory cfgBefore = oracle.getAssetConfig(address(token));
+        assertEq(cfgBefore.anchorPrice, 100e18, "anchor unchanged before window expiry");
+        assertEq(cfgBefore.lastPrice, 140e18);
+
+        // Advance past the rolling-anchor window (86400s configured in setUp).
+        vm.warp(block.timestamp + 86401);
+
+        // Next push: +40% from 140 -> 196. This would be +96% from the original
+        // anchor 100 and exceed the 50% cumulative cap, but the rotation rebases
+        // the anchor to 140 (the previous lastPrice) so +40% is in-band.
+        _push(196e18);
+
+        IPoppieEulerOracle.AssetConfig memory cfgAfter = oracle.getAssetConfig(address(token));
+        assertEq(cfgAfter.anchorPrice, 140e18, "anchor rotated to previous lastPrice");
+        assertEq(cfgAfter.lastPrice, 196e18);
+        assertEq(uint256(cfgAfter.anchorTimestamp), block.timestamp, "anchor timestamp stamped with push ts");
+    }
+
+    function test_anchor_doesNotRotateWithinWindow() public {
+        // Two pushes within the window — anchor must not move.
+        _push(120e18);
+        vm.warp(block.timestamp + 86400); // exactly at window, not past it
+        _push(130e18);
+        IPoppieEulerOracle.AssetConfig memory cfg = oracle.getAssetConfig(address(token));
+        assertEq(cfg.anchorPrice, 100e18, "anchor frozen within window");
+    }
+
+    function test_anchor_zeroWindowDisablesRotation() public {
+        // Set anchorWindow = 0. Anchor must never rotate, even far in the future.
+        vm.prank(admin);
+        oracle.setAnchorWindow(0);
+
+        _push(140e18); // +40% from seed 100, in-band
+        vm.warp(block.timestamp + 365 days);
+
+        // Anchor is still the seed (100). A +40% push from 140 would be +96% from
+        // the frozen anchor and trip the cumulative cap.
+        uint128[] memory p = new uint128[](1);
+        p[0] = 196e18;
+        vm.prank(keeper);
+        vm.expectRevert(); // CumulativeDeviationExceeded
+        oracle.keeperPushPrices(_arr(address(token)), p);
+
+        IPoppieEulerOracle.AssetConfig memory cfg = oracle.getAssetConfig(address(token));
+        assertEq(cfg.anchorPrice, 100e18, "anchor never rotates when window = 0");
+    }
+
     function test_setAssetThresholds_revert_zeroCumulativeCap() public {
         vm.prank(admin);
         vm.expectRevert(IPoppieEulerOracle.InvalidConfig.selector);
@@ -240,6 +294,86 @@ contract PoppieEulerOracleTest is Test {
         vm.prank(admin);
         vm.expectRevert(IPoppieEulerOracle.InvalidConfig.selector);
         oracle.configureAssets(_arr(address(t2)), cb, cap);
+    }
+
+    // --- A-4: bps caps must be <= 10000 ---
+
+    function test_configureAssets_revert_circuitBreakerExceedsBps() public {
+        MockERC20 t2 = new MockERC20("X", "X", 18);
+        uint16[] memory cb = new uint16[](1);
+        cb[0] = 10_001;
+        uint16[] memory cap = new uint16[](1);
+        cap[0] = CB;
+        vm.prank(admin);
+        vm.expectRevert(IPoppieEulerOracle.InvalidConfig.selector);
+        oracle.configureAssets(_arr(address(t2)), cb, cap);
+    }
+
+    function test_configureAssets_revert_cumulativeCapExceedsBps() public {
+        MockERC20 t2 = new MockERC20("X", "X", 18);
+        uint16[] memory cb = new uint16[](1);
+        cb[0] = CB;
+        uint16[] memory cap = new uint16[](1);
+        cap[0] = 10_001;
+        vm.prank(admin);
+        vm.expectRevert(IPoppieEulerOracle.InvalidConfig.selector);
+        oracle.configureAssets(_arr(address(t2)), cb, cap);
+    }
+
+    function test_configureAssets_acceptsExactlyMaxBps() public {
+        MockERC20 t2 = new MockERC20("X", "X", 18);
+        uint16[] memory cb = new uint16[](1);
+        cb[0] = 10_000;
+        uint16[] memory cap = new uint16[](1);
+        cap[0] = 10_000;
+        vm.prank(admin);
+        oracle.configureAssets(_arr(address(t2)), cb, cap);
+        // no revert
+    }
+
+    function test_setAssetThresholds_revert_circuitBreakerExceedsBps() public {
+        vm.prank(admin);
+        vm.expectRevert(IPoppieEulerOracle.InvalidConfig.selector);
+        oracle.setAssetThresholds(address(token), 10_001, CB);
+    }
+
+    function test_setAssetThresholds_revert_cumulativeCapExceedsBps() public {
+        vm.prank(admin);
+        vm.expectRevert(IPoppieEulerOracle.InvalidConfig.selector);
+        oracle.setAssetThresholds(address(token), CB, 10_001);
+    }
+
+    function test_setAssetThresholds_acceptsExactlyMaxBps() public {
+        vm.prank(admin);
+        oracle.setAssetThresholds(address(token), 10_000, 10_000);
+        IPoppieEulerOracle.AssetConfig memory cfg = oracle.getAssetConfig(address(token));
+        assertEq(cfg.circuitBreakerThreshold, 10_000);
+        assertEq(cfg.cumulativeDeviationCap, 10_000);
+    }
+
+    // --- A-5: empty batches revert ---
+
+    function test_configureAssets_revert_emptyArrays() public {
+        address[] memory a = new address[](0);
+        uint16[] memory t = new uint16[](0);
+        vm.prank(admin);
+        vm.expectRevert(IPoppieEulerOracle.LengthMismatch.selector);
+        oracle.configureAssets(a, t, t);
+    }
+
+    function test_keeperPushPrices_revert_emptyArrays() public {
+        address[] memory a = new address[](0);
+        uint128[] memory p = new uint128[](0);
+        vm.prank(keeper);
+        vm.expectRevert(IPoppieEulerOracle.LengthMismatch.selector);
+        oracle.keeperPushPrices(a, p);
+    }
+
+    function test_pauseAssets_revert_emptyArrays() public {
+        address[] memory a = new address[](0);
+        vm.prank(admin);
+        vm.expectRevert(IPoppieEulerOracle.LengthMismatch.selector);
+        oracle.pauseAssets(a);
     }
 
     // --- getPrice staleness ---
@@ -427,7 +561,7 @@ contract PoppieEulerOracleTest is Test {
         vm.prank(keeper);
         oracle.pauseAssets(_arr(address(token)));
         // getPrice reverts
-        vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.AssetPaused.selector, address(token)));
+        vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.AssetIsPaused.selector, address(token)));
         oracle.getPrice(address(token));
     }
 
@@ -435,7 +569,7 @@ contract PoppieEulerOracleTest is Test {
         _push(100e18);
         vm.prank(admin);
         oracle.pauseAssets(_arr(address(token)));
-        vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.AssetPaused.selector, address(token)));
+        vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.AssetIsPaused.selector, address(token)));
         oracle.getPrice(address(token));
     }
 
@@ -477,7 +611,7 @@ contract PoppieEulerOracleTest is Test {
         uint128[] memory p = new uint128[](1);
         p[0] = 101e18;
         vm.prank(keeper);
-        vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.AssetPaused.selector, address(token)));
+        vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.AssetIsPaused.selector, address(token)));
         oracle.keeperPushPrices(_arr(address(token)), p);
     }
 
@@ -489,7 +623,7 @@ contract PoppieEulerOracleTest is Test {
         vm.prank(admin);
         oracle.adminSetPrice(address(token), 105e18);
         // still paused — getPrice reverts
-        vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.AssetPaused.selector, address(token)));
+        vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.AssetIsPaused.selector, address(token)));
         oracle.getPrice(address(token));
         // keeper pushes in-band price → auto-unpauses
         uint128[] memory p = new uint128[](1);
@@ -524,7 +658,7 @@ contract PoppieEulerOracleTest is Test {
         vm.prank(admin);
         oracle.adminSetPrice(address(token), 200e18);
         // still paused
-        vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.AssetPaused.selector, address(token)));
+        vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.AssetIsPaused.selector, address(token)));
         oracle.getPrice(address(token));
         assertTrue(oracle.getAssetConfig(address(token)).paused);
     }
