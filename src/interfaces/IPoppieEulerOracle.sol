@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity >=0.8.24;
+pragma solidity 0.8.24;
 
 /// @title IPoppieEulerOracle
 /// @notice Stores 18-decimal USD prices pushed by a keeper, read by PoppieEulerAdapter.
@@ -28,6 +28,7 @@ interface IPoppieEulerOracle {
 
     error ZeroAddress();
     error LengthMismatch();
+    error InvalidConfig();
     error InvalidPrice();
     error PriceNotInitialized();
     error StalePrice();
@@ -40,6 +41,7 @@ interface IPoppieEulerOracle {
     error OnlyKeeperOrAdmin();
     error NoPendingAdmin();
     error AssetPaused(address asset);
+    error AssetAlreadyPaused(address asset);
 
     // ── Events ──────────────────────────────────────────────────────────
 

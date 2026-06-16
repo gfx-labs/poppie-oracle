@@ -35,7 +35,7 @@ contract PoppieEulerAdapterSymbolicTest is Test {
         address[] memory a = new address[](1);
         uint16[] memory t = new uint16[](1);
         a[0] = address(token);
-        t[0] = 0; // disable circuit breaker for arbitrary symbolic price
+        t[0] = 10000; // cumulative cap must be non-zero; admin seeds the price so no guard fires
         vm.prank(admin);
         oracle.configureAssets(a, t, t);
 
@@ -43,10 +43,10 @@ contract PoppieEulerAdapterSymbolicTest is Test {
         vm.prank(aAdmin);
         adapter.registerBase(address(token), dec);
 
-        uint128[] memory p = new uint128[](1);
-        p[0] = price18;
-        vm.prank(keeper);
-        oracle.keeperPushPrices(a, p);
+        // admin seeds the symbolic price directly so the symbolic prover does not need
+        // to model the keeper guards.
+        vm.prank(admin);
+        oracle.adminSetPrice(address(token), price18);
     }
 
     /// @notice (18,18): exp = 18. Proven equal to mulDiv reference for all inputs.
