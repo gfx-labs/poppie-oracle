@@ -52,7 +52,7 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
     /// @inheritdoc IPoppieEulerOracle
     function getPrice(address asset) external view override returns (int256) {
         AssetConfig storage cfg = _assetConfigs[asset];
-        if (cfg.paused) revert AssetPaused(asset);
+        if (cfg.paused) revert AssetIsPaused(asset);
         uint128 price = cfg.lastPrice;
         if (price == 0) revert PriceNotInitialized();
         uint256 _maxAge = maxPriceAge;
@@ -74,6 +74,7 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
         address[] calldata assets,
         uint128[] calldata prices
     ) external override onlyKeeper {
+        if (assets.length == 0) revert LengthMismatch();
         if (assets.length != prices.length) revert LengthMismatch();
         uint40 ts = uint40(block.timestamp);
 
@@ -88,7 +89,7 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
             // call adminSetPrice first; for a paused asset admin must set the recovery
             // reference. this also makes both guards below unconditionally active.
             if (oldPrice == 0) {
-                if (cfg.paused) revert AssetPaused(assets[i]);
+                if (cfg.paused) revert AssetIsPaused(assets[i]);
                 revert PriceNotInitialized();
             }
 
@@ -112,6 +113,7 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
             cfg.lastPrice = prices[i];
             cfg.lastPriceTimestamp = ts;
 
+            emit PriceUpdated(assets[i], oldPrice, prices[i], ts);
         }
 
         emit PricesRefreshed(assets);
@@ -120,6 +122,7 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
     /// @inheritdoc IPoppieEulerOracle
     function pauseAssets(address[] calldata assets) external override {
         if (msg.sender != keeper && msg.sender != admin) revert OnlyKeeperOrAdmin();
+        if (assets.length == 0) revert LengthMismatch();
         for (uint256 i = 0; i < assets.length; ++i) {
             AssetConfig storage cfg = _assetConfigs[assets[i]];
             if (!cfg.configured) revert AssetNotConfigured(assets[i]);
@@ -129,7 +132,7 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
             cfg.lastPriceTimestamp = 0;
             cfg.anchorPrice = 0;
             cfg.anchorTimestamp = 0;
-            emit AssetPausedEvent(assets[i]);
+            emit AssetPaused(assets[i]);
         }
     }
 
@@ -141,6 +144,7 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
         uint16[] calldata circuitBreakerThresholds,
         uint16[] calldata cumulativeDeviationCaps
     ) external override onlyAdmin {
+        if (assets.length == 0) revert LengthMismatch();
         if (assets.length != circuitBreakerThresholds.length || assets.length != cumulativeDeviationCaps.length) {
             revert LengthMismatch();
         }
@@ -149,6 +153,10 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
             // require non-zero cumulative cap so the multi-step drift guard is always active.
             // this is the only guard that defends a duplicate-asset batch in keeperPushPrices.
             if (cumulativeDeviationCaps[i] == 0) revert InvalidConfig();
+            // bps values must be <= 10000 (100%). anything larger silently disables
+            // the guard from the consumer's perspective and is almost certainly a misconfig.
+            if (circuitBreakerThresholds[i] > BPS_DENOMINATOR) revert InvalidConfig();
+            if (cumulativeDeviationCaps[i] > BPS_DENOMINATOR) revert InvalidConfig();
             _assetConfigs[assets[i]] = AssetConfig({
                 configured: true,
                 paused: false,
@@ -166,8 +174,11 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
     /// @inheritdoc IPoppieEulerOracle
     function setAssetThresholds(address asset, uint16 circuitBreakerThreshold, uint16 cumulativeDeviationCap) external override onlyAdmin {
         if (!_assetConfigs[asset].configured) revert AssetNotConfigured(asset);
-        // mirror the configureAssets invariant: cumulative cap must remain non-zero.
+        // mirror the configureAssets invariants: cumulative cap must remain
+        // non-zero, and both bps values must be <= 10000.
         if (cumulativeDeviationCap == 0) revert InvalidConfig();
+        if (circuitBreakerThreshold > BPS_DENOMINATOR) revert InvalidConfig();
+        if (cumulativeDeviationCap > BPS_DENOMINATOR) revert InvalidConfig();
         _assetConfigs[asset].circuitBreakerThreshold = circuitBreakerThreshold;
         _assetConfigs[asset].cumulativeDeviationCap = cumulativeDeviationCap;
         emit AssetThresholdsUpdated(asset, circuitBreakerThreshold, cumulativeDeviationCap);
@@ -222,28 +233,48 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
 
     // ── Internal ────────────────────────────────────────────────────────
 
+    /// @dev Cumulative-drift check. Compares `newPrice` against the rolling anchor.
+    ///      When the window expires we rotate the anchor to the *previous* keeper
+    ///      push (`cfg.lastPrice`), then evaluate the current push against that
+    ///      freshly-rotated reference. Setting `anchorWindow = 0` disables rotation
+    ///      entirely, freezing the anchor at the first seeded value until admin
+    ///      re-seeds via `adminSetPrice`.
     function _checkAndUpdateAnchor(AssetConfig storage cfg, uint128 newPrice, address asset, uint40 ts) internal {
         uint256 cap = uint256(cfg.cumulativeDeviationCap);
         if (cap == 0) return;
 
-        uint128 anchor = cfg.anchorPrice;
-        if (anchor == 0) {
+        uint128 oldAnchor = cfg.anchorPrice;
+        if (oldAnchor == 0) {
             cfg.anchorPrice = newPrice;
             cfg.anchorTimestamp = ts;
             return;
         }
 
+        // Rotate the anchor forward if the rolling window has expired. The new
+        // anchor is the previous keeper push, NOT the current `newPrice` — this
+        // is what makes the cap "cumulative drift from the last accepted price"
+        // rather than "drift from the current push to itself" (which would be 0).
+        uint128 newAnchor = oldAnchor;
         uint256 _window = anchorWindow;
-        if (_window != 0 && block.timestamp - uint256(cfg.anchorTimestamp) > _window) {
-            anchor = cfg.lastPrice;
-            cfg.anchorPrice = anchor;
+        // use the caller-provided `ts` rather than re-reading `block.timestamp`
+        // so anchor staleness is measured against the exact same moment used
+        // to stamp the push (and trivially within uint40 range).
+        if (_window != 0 && uint256(ts) - uint256(cfg.anchorTimestamp) > _window) {
+            newAnchor = cfg.lastPrice;
+            cfg.anchorPrice = newAnchor;
             cfg.anchorTimestamp = ts;
         }
 
-        uint256 dev = _deviationBps(newPrice, anchor);
+        uint256 dev = _deviationBps(newPrice, newAnchor);
         if (dev > cap) revert CumulativeDeviationExceeded(asset, dev, cap);
     }
 
+    /// @dev Absolute deviation of `a` from `b`, scaled to basis points (1 bps = 0.01%).
+    /// @dev INVARIANT: callers MUST ensure `b != 0`. Both current call sites
+    ///      satisfy this — `keeperPushPrices` guarantees `oldPrice != 0`
+    ///      before entering the per-push breaker, and `_checkAndUpdateAnchor`
+    ///      short-circuits when `anchorPrice == 0`. No runtime check is added
+    ///      here so this helper stays branch-free on the hot path.
     function _deviationBps(uint128 a, uint128 b) internal pure returns (uint256) {
         uint256 diff = a >= b
             ? uint256(a - b)

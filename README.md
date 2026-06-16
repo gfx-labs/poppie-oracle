@@ -60,7 +60,7 @@ freezing the asset in Euler until a fresh price is written.
 ### Per-asset pause
 
 The keeper (or admin) can call `pauseAssets` to immediately freeze
-specific assets — `getPrice` reverts with `AssetPaused` and
+specific assets — `getPrice` reverts with `AssetIsPaused` and
 `keeperPushPrices` rejects pushes to paused assets. This is used when
 the Ondo halt gate signals a corporate action (split, earnings halt,
 trading suspension).
