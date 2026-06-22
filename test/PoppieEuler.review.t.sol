@@ -156,8 +156,12 @@ contract PoppieEulerReviewTest is Test {
         // Wait for the anchor window to expire (86400s in test setup).
         vm.warp(block.timestamp + 86401);
 
-        // Now another +40% from 140 -> 196 should succeed because the anchor
-        // resets to 140 (the current lastPrice) at the start of this push.
+        // Now another +40% from 140 -> 196 should succeed. Post-audit (L-01)
+        // the anchor rotates to the *current* push (196) rather than the
+        // previous lastPrice (140), but the push itself still passes because
+        // its deviation against the prior anchor (140) is +40%, in-band, and
+        // because the rotation push is by construction zero-deviation against
+        // the new anchor.
         p[0] = 196e18;
         vm.prank(keeper);
         oracle.keeperPushPrices(_arr(address(t)), p);

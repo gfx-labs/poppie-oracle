@@ -144,7 +144,18 @@ contract PoppieEulerAdapterTest is Test {
     }
 
     function test_registerBase_explicitDecimals() public {
-        MockERC20 t = new MockERC20("X", "X", 18);
+        // The admin-supplied decimals override the token's reported decimals
+        // when the two differ. After audit I-02 the adapter cross-checks
+        // against the live decimals() value, so this test now constructs a
+        // token whose own decimals match the value being passed in (9) and
+        // demonstrates the override on a freshly-deployed token.
+        MockERC20 t = new MockERC20("X", "X", 9);
+        // I-04: master must have the asset configured before adapter
+        // registration is allowed. Configure with permissive thresholds.
+        uint16[] memory th = new uint16[](1);
+        th[0] = CB;
+        vm.prank(admin);
+        oracle.configureAssets(_arr(address(t)), th, th);
         vm.prank(aAdmin);
         adapter.registerBase(address(t), 9);
         (bool reg, uint8 dec) = adapter.getBaseInfo(address(t));
@@ -302,4 +313,94 @@ contract PoppieEulerAdapterTest is Test {
 
         assertEq(adapter.getQuote(0, address(t), UNIT), 0);
     }
+
+    // -----------------------------------------------------------------
+    // Audit I-04 — registerBase requires the master oracle to have the
+    // base configured (catches typos and missed configureAssets calls).
+    // -----------------------------------------------------------------
+
+    function test_registerBase_revert_oracleNotReady_unconfigured() public {
+        // a brand-new token, never configured on the master oracle
+        MockERC20 t = new MockERC20("X", "X", 18);
+        vm.prank(aAdmin);
+        vm.expectRevert(abi.encodeWithSelector(PoppieEulerAdapter.OracleNotReady.selector, address(t)));
+        adapter.registerBase(address(t), 18);
+    }
+
+    function test_registerBase_succeedsWhenConfiguredButNotSeeded() public {
+        // configured-but-unseeded is the normal intermediate state during
+        // deployment: configureAssets has run, adminSetPrice has not yet
+        // been called. Registration must succeed here so a multi-step
+        // bootstrap can configure → register → seed in any order.
+        MockERC20 t = new MockERC20("X", "X", 18);
+        uint16[] memory th = new uint16[](1);
+        th[0] = CB;
+        vm.prank(admin);
+        oracle.configureAssets(_arr(address(t)), th, th);
+        // explicitly NOT seeded yet
+        vm.prank(aAdmin);
+        adapter.registerBase(address(t), 18);
+        (bool reg,) = adapter.getBaseInfo(address(t));
+        assertTrue(reg);
+    }
+
+    // -----------------------------------------------------------------
+    // Audit I-02 — registerBase cross-checks the supplied decimals
+    // against the token's own decimals() when present.
+    // -----------------------------------------------------------------
+
+    function test_registerBase_revert_decimalsMismatch() public {
+        // token reports 18, admin supplies 6 → mismatch
+        MockERC20 t = new MockERC20("X", "X", 18);
+        uint16[] memory th = new uint16[](1);
+        th[0] = CB;
+        vm.prank(admin);
+        oracle.configureAssets(_arr(address(t)), th, th);
+        vm.prank(aAdmin);
+        vm.expectRevert(abi.encodeWithSelector(PoppieEulerAdapter.DecimalsMismatch.selector, uint8(6), uint8(18)));
+        adapter.registerBase(address(t), 6);
+    }
+
+    function test_registerBase_succeedsForTokenWithoutDecimals() public {
+        // Tokens that don't implement decimals() must still be registerable
+        // with admin-supplied decimals. We use a minimal contract whose
+        // bytecode reverts on the decimals() call.
+        NoDecimalsToken nd = new NoDecimalsToken();
+        uint16[] memory th = new uint16[](1);
+        th[0] = CB;
+        vm.prank(admin);
+        oracle.configureAssets(_arr(address(nd)), th, th);
+        vm.prank(aAdmin);
+        adapter.registerBase(address(nd), 12);
+        (bool reg, uint8 dec) = adapter.getBaseInfo(address(nd));
+        assertTrue(reg);
+        assertEq(dec, 12);
+    }
+
+    // -----------------------------------------------------------------
+    // Audit I-06 — split NoPendingAdmin / NotPendingAdmin on the adapter.
+    // -----------------------------------------------------------------
+
+    function test_acceptAdmin_revertsNoPendingAdmin_whenNoneSet() public {
+        vm.prank(user);
+        vm.expectRevert(PoppieEulerAdapter.NoPendingAdmin.selector);
+        adapter.acceptAdmin();
+    }
+
+    function test_acceptAdmin_revertsNotPendingAdmin_whenWrongCaller() public {
+        vm.prank(aAdmin);
+        adapter.transferAdmin(address(0xEE));
+        vm.prank(user);
+        vm.expectRevert(PoppieEulerAdapter.NotPendingAdmin.selector);
+        adapter.acceptAdmin();
+    }
+}
+
+/// @dev Minimal contract used to exercise the adapter's try/catch fallback
+///      when a token does not implement `decimals()`. Any call to this
+///      contract reverts (no fallback, no function selectors), so the
+///      adapter's decimals() probe lands in the catch branch.
+contract NoDecimalsToken {
+    // explicit revert fallback so even a bare call reverts loudly.
+    fallback() external { revert(); }
 }

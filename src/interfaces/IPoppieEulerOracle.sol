@@ -7,11 +7,16 @@ interface IPoppieEulerOracle {
     /// @dev Packed into 2 storage slots (down from 8).
     ///      Slot 1: configured(1) + paused(1) + cbThreshold(2) + cumCap(2)
     ///              + lastTimestamp(5) + anchorTimestamp(5) + lastPrice(16) = 32
-    ///      Slot 2: anchorPrice(16) + [16 free]
+    ///      Slot 2: anchorPrice(16) + maxPriceAge(5) + [11 free]
     ///
     ///      Prices are uint128 (always positive — the contract rejects
     ///      non-positive writes). getPrice returns int256 for Euler
     ///      compatibility by casting on read.
+    ///
+    ///      `maxPriceAge` is per-asset: when non-zero it overrides the global
+    ///      `maxPriceAge` for this asset. When zero, the global default
+    ///      applies. A uint40 fits 34,000+ years which is well beyond any
+    ///      sensible staleness window.
     struct AssetConfig {
         bool configured;                    // 1 byte
         bool paused;                        // 1 byte
@@ -25,6 +30,7 @@ interface IPoppieEulerOracle {
                                             // before keeper can push)
         // --- slot boundary ---
         uint128 anchorPrice;                // 18 decimals; cumulative check reference
+        uint40 maxPriceAge;                 // 0 = inherit global; non-zero = per-asset override
     }
 
     // ── Errors ──────────────────────────────────────────────────────────
@@ -42,7 +48,15 @@ interface IPoppieEulerOracle {
     error OnlyAdmin();
     error OnlyKeeper();
     error OnlyKeeperOrAdmin();
+    /// @dev Raised by `acceptAdmin` when no pending admin transfer is in flight
+    ///      (i.e. `pendingAdmin == address(0)`). Distinct from `NotPendingAdmin`
+    ///      which signals an unauthorized caller during an active transfer.
     error NoPendingAdmin();
+    /// @dev Raised by `acceptAdmin` when a pending admin transfer is in flight
+    ///      but the caller is not the pending admin. Distinguishing this from
+    ///      `NoPendingAdmin` lets off-chain monitoring tell a benign
+    ///      configuration state apart from an unauthorized take-over attempt.
+    error NotPendingAdmin();
     error AssetIsPaused(address asset);
     error AssetAlreadyPaused(address asset);
 
@@ -64,10 +78,18 @@ interface IPoppieEulerOracle {
     event PricesRefreshed(address[] assets);
     event OracleDeployed(address indexed admin, address indexed keeper, uint256 maxPriceAge, uint256 anchorWindow);
     event MaxPriceAgeUpdated(uint256 oldValue, uint256 newValue);
+    /// @notice Emitted whenever the per-asset staleness override changes
+    ///         (including being cleared back to the global default at 0).
+    event AssetMaxPriceAgeUpdated(address indexed asset, uint40 oldValue, uint40 newValue);
     event AnchorWindowUpdated(uint256 oldValue, uint256 newValue);
     event AdminPriceForced(address indexed asset, uint128 price);
     event AssetPaused(address indexed asset);
     event AssetUnpaused(address indexed asset);
+    /// @notice Emitted on the keeper-push path whenever the rolling anchor is
+    ///         rotated by the cumulative-drift guard. `newAnchor` is the value
+    ///         the next push will be measured against. Off-chain monitoring
+    ///         should subscribe to this event to detect anchor resets.
+    event AnchorRotated(address indexed asset, uint128 oldAnchor, uint128 newAnchor, uint40 timestamp);
 
     // ── Views ───────────────────────────────────────────────────────────
 
@@ -119,6 +141,14 @@ interface IPoppieEulerOracle {
     /// @notice Pause one or more assets. Zeros all price state for each, so
     ///         the next keeper push will revert until admin re-seeds via
     ///         `adminSetPrice`. Callable by keeper or admin.
+    /// @dev    There is intentionally no `adminUnpause` counterpart: recovery
+    ///         is a two-step admin-then-keeper handshake. Admin re-seeds via
+    ///         `adminSetPrice`, then the keeper's next valid push auto-unpauses
+    ///         the asset. This guarantees that an unpaused asset is always
+    ///         backed by a price that has passed the keeper-side guards
+    ///         (circuit breaker + cumulative cap) rather than just an admin
+    ///         force-write. See audit L-02 for the operational trade-off
+    ///         (recovery requires keeper cooperation, by design).
     function pauseAssets(address[] calldata assets) external;
 
     // ── Admin ───────────────────────────────────────────────────────────
@@ -144,14 +174,25 @@ interface IPoppieEulerOracle {
     ///         trust model as every other `onlyAdmin` setter.
     function adminSetPrice(address asset, uint128 price) external;
 
-    /// @notice Update the staleness window applied by `getPrice`.
-    /// @dev    Passing `0` is an INTENTIONAL opt-out: when `maxPriceAge == 0`,
-    ///         `getPrice` skips the staleness check entirely and will return
-    ///         arbitrarily old prices. This is reserved for incident response
-    ///         (e.g. keeper offline) and should not be the steady-state
-    ///         configuration. Admins are expected to restore a non-zero value
-    ///         once normal operation resumes.
+    /// @notice Update the GLOBAL staleness window applied by `getPrice` for
+    ///         any asset that does not have a per-asset override.
+    /// @dev    Passing `0` is an INTENTIONAL opt-out: when both the per-asset
+    ///         override and the global value are `0`, `getPrice` skips the
+    ///         staleness check entirely and will return arbitrarily old
+    ///         prices. This is reserved for incident response (e.g. keeper
+    ///         offline) and should not be the steady-state configuration.
+    ///         Admins are expected to restore a non-zero value once normal
+    ///         operation resumes.
     function setMaxPriceAge(uint256 newMaxPriceAge) external;
+
+    /// @notice Override the staleness window for a specific asset.
+    /// @dev    Tokenised equities trade on different schedules and have
+    ///         different liquidity profiles. The per-asset override lets the
+    ///         admin tighten the freshness guarantee on liquid names while
+    ///         keeping a looser window on assets with legitimate update gaps.
+    ///         Passing `0` clears the override and reinstates the global
+    ///         `maxPriceAge`. The asset must already be configured.
+    function setAssetMaxPriceAge(address asset, uint40 newMaxPriceAge) external;
 
     /// @notice Update the rolling-anchor window used by the cumulative drift guard.
     /// @dev    Passing `0` is an INTENTIONAL opt-out: when `anchorWindow == 0`
@@ -162,5 +203,11 @@ interface IPoppieEulerOracle {
     function setAnchorWindow(uint256 newAnchorWindow) external;
     function setKeeper(address newKeeper) external;
     function transferAdmin(address newAdmin) external;
+
+    /// @notice Accept a pending admin transfer. Must be called by the address
+    ///         set via `transferAdmin`.
+    /// @dev    Reverts with `NoPendingAdmin` when no transfer is in flight
+    ///         (`pendingAdmin == address(0)`), and `NotPendingAdmin` when a
+    ///         transfer is in flight but the caller is not the pending admin.
     function acceptAdmin() external;
 }

@@ -14,6 +14,10 @@ interface IERC20 {
 /// Usage:
 ///   source .env && forge script script/ConfigureDev.s.sol \
 ///     --rpc-url $BSC_RPC_URL --broadcast
+///
+/// NOTE (audit L-03): see DeployDev.s.sol for the env-var caveat. Same
+/// guidance applies here — production deployments should use a keystore,
+/// hardware signer, or KMS rather than `DEPLOYER_KEY`.
 contract ConfigureDev is Script {
     // dev deployments
     address constant ORACLE  = 0x0735787c7eA8d8B60Ae87cC27c724484E4488043;
