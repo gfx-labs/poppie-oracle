@@ -55,7 +55,11 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
         if (cfg.paused) revert AssetIsPaused(asset);
         uint128 price = cfg.lastPrice;
         if (price == 0) revert PriceNotInitialized();
-        uint256 _maxAge = maxPriceAge;
+        // per-asset override takes precedence over the global default. either
+        // being zero means "no staleness guard for this asset"; both must be
+        // zero to disable the check entirely.
+        uint256 _maxAge = uint256(cfg.maxPriceAge);
+        if (_maxAge == 0) _maxAge = maxPriceAge;
         if (_maxAge != 0) {
             if (block.timestamp - uint256(cfg.lastPriceTimestamp) > _maxAge) revert StalePrice();
         }
@@ -165,7 +169,8 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
                 lastPriceTimestamp: 0,
                 anchorTimestamp: 0,
                 lastPrice: 0,
-                anchorPrice: 0
+                anchorPrice: 0,
+                maxPriceAge: 0  // inherit global by default; override via setAssetMaxPriceAge
             });
             emit AssetConfigured(assets[i], circuitBreakerThresholds[i], cumulativeDeviationCaps[i]);
         }
@@ -204,6 +209,14 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
     }
 
     /// @inheritdoc IPoppieEulerOracle
+    function setAssetMaxPriceAge(address asset, uint40 newMaxPriceAge) external override onlyAdmin {
+        AssetConfig storage cfg = _assetConfigs[asset];
+        if (!cfg.configured) revert AssetNotConfigured(asset);
+        emit AssetMaxPriceAgeUpdated(asset, cfg.maxPriceAge, newMaxPriceAge);
+        cfg.maxPriceAge = newMaxPriceAge;
+    }
+
+    /// @inheritdoc IPoppieEulerOracle
     function setAnchorWindow(uint256 newAnchorWindow) external override onlyAdmin {
         emit AnchorWindowUpdated(anchorWindow, newAnchorWindow);
         anchorWindow = newAnchorWindow;
@@ -225,7 +238,12 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
 
     /// @inheritdoc IPoppieEulerOracle
     function acceptAdmin() external override {
-        if (msg.sender != pendingAdmin) revert NoPendingAdmin();
+        // distinguish "no transfer in flight" from "unauthorized caller during
+        // a transfer" so off-chain monitoring can tell a benign configuration
+        // state apart from an attempted take-over.
+        address _pending = pendingAdmin;
+        if (_pending == address(0)) revert NoPendingAdmin();
+        if (msg.sender != _pending) revert NotPendingAdmin();
         emit AdminTransferred(admin, msg.sender);
         admin = msg.sender;
         pendingAdmin = address(0);
@@ -234,11 +252,21 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
     // ── Internal ────────────────────────────────────────────────────────
 
     /// @dev Cumulative-drift check. Compares `newPrice` against the rolling anchor.
-    ///      When the window expires we rotate the anchor to the *previous* keeper
-    ///      push (`cfg.lastPrice`), then evaluate the current push against that
-    ///      freshly-rotated reference. Setting `anchorWindow = 0` disables rotation
-    ///      entirely, freezing the anchor at the first seeded value until admin
-    ///      re-seeds via `adminSetPrice`.
+    ///      When the window expires we rotate the anchor to the price being
+    ///      accepted right now (`newPrice`), so every new window starts from
+    ///      the just-accepted level and the cumulative cap measures drift
+    ///      from that point forward. This eliminates the boundary asymmetry
+    ///      where a rotated anchor sits at the previous push (potentially
+    ///      far from the current price) and artificially inflates the
+    ///      apparent deviation of the very next push.
+    ///
+    ///      Note that the rotation push itself is therefore implicitly within
+    ///      the cap (deviation of `newPrice` from itself is 0); the per-push
+    ///      circuit breaker remains the bound on a single rotation-push step.
+    ///
+    ///      Setting `anchorWindow = 0` disables rotation entirely, freezing
+    ///      the anchor at the first seeded value until admin re-seeds via
+    ///      `adminSetPrice`.
     function _checkAndUpdateAnchor(AssetConfig storage cfg, uint128 newPrice, address asset, uint40 ts) internal {
         uint256 cap = uint256(cfg.cumulativeDeviationCap);
         if (cap == 0) return;
@@ -251,18 +279,18 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
         }
 
         // Rotate the anchor forward if the rolling window has expired. The new
-        // anchor is the previous keeper push, NOT the current `newPrice` — this
-        // is what makes the cap "cumulative drift from the last accepted price"
-        // rather than "drift from the current push to itself" (which would be 0).
+        // anchor is the price being accepted *now* (`newPrice`), not the
+        // previous push: see the function-level NatSpec for the rationale.
         uint128 newAnchor = oldAnchor;
         uint256 _window = anchorWindow;
         // use the caller-provided `ts` rather than re-reading `block.timestamp`
         // so anchor staleness is measured against the exact same moment used
         // to stamp the push (and trivially within uint40 range).
         if (_window != 0 && uint256(ts) - uint256(cfg.anchorTimestamp) > _window) {
-            newAnchor = cfg.lastPrice;
+            newAnchor = newPrice;
             cfg.anchorPrice = newAnchor;
             cfg.anchorTimestamp = ts;
+            emit AnchorRotated(asset, oldAnchor, newAnchor, ts);
         }
 
         uint256 dev = _deviationBps(newPrice, newAnchor);

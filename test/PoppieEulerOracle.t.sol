@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.24;
 
-import {Test} from "forge-std/Test.sol";
+import {Test, Vm} from "forge-std/Test.sol";
 import {PoppieEulerOracle} from "../src/PoppieEulerOracle.sol";
 import {IPoppieEulerOracle} from "../src/interfaces/IPoppieEulerOracle.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
@@ -225,11 +225,13 @@ contract PoppieEulerOracleTest is Test {
         assertEq(oracle.getPrice(address(token)), 140e18);
     }
 
-    // --- Anchor rotation (A-1 / D-2): after `anchorWindow` elapses, the next
-    //     keeper push must rotate the anchor to the previous `lastPrice` and
-    //     evaluate drift against that freshly-rotated reference. ---
+    // --- Anchor rotation (audit L-01): after `anchorWindow` elapses, the
+    //     next keeper push rotates the anchor to the price being accepted
+    //     *now* (not the previous push). This eliminates the boundary
+    //     asymmetry where a stale rotated anchor inflates the apparent
+    //     deviation of the next push during a directional move. ---
 
-    function test_anchor_rotatesToPreviousLastPriceAfterWindow() public {
+    function test_anchor_rotatesToCurrentPriceAfterWindow() public {
         // Seed = 100 (from setUp). First push: +40% to 140. Anchor still 100.
         _push(140e18);
         IPoppieEulerOracle.AssetConfig memory cfgBefore = oracle.getAssetConfig(address(token));
@@ -239,13 +241,14 @@ contract PoppieEulerOracleTest is Test {
         // Advance past the rolling-anchor window (86400s configured in setUp).
         vm.warp(block.timestamp + 86401);
 
-        // Next push: +40% from 140 -> 196. This would be +96% from the original
-        // anchor 100 and exceed the 50% cumulative cap, but the rotation rebases
-        // the anchor to 140 (the previous lastPrice) so +40% is in-band.
+        // Next push: +40% from 140 -> 196. Pre-fix this rebased the anchor to
+        // 140 (the previous lastPrice). Post-fix it rebases to the just-accepted
+        // 196, so the cumulative reference moves with the price rather than
+        // lagging one push behind.
         _push(196e18);
 
         IPoppieEulerOracle.AssetConfig memory cfgAfter = oracle.getAssetConfig(address(token));
-        assertEq(cfgAfter.anchorPrice, 140e18, "anchor rotated to previous lastPrice");
+        assertEq(cfgAfter.anchorPrice, 196e18, "anchor rotated to current push");
         assertEq(cfgAfter.lastPrice, 196e18);
         assertEq(uint256(cfgAfter.anchorTimestamp), block.timestamp, "anchor timestamp stamped with push ts");
     }
@@ -505,6 +508,8 @@ contract PoppieEulerOracleTest is Test {
     }
 
     function test_acceptAdmin_revert_notPending() public {
+        // pendingAdmin == address(0): no transfer is in flight, so the
+        // post-audit (I-06) error is NoPendingAdmin regardless of caller.
         vm.prank(user);
         vm.expectRevert(IPoppieEulerOracle.NoPendingAdmin.selector);
         oracle.acceptAdmin();
@@ -517,9 +522,11 @@ contract PoppieEulerOracleTest is Test {
         oracle.transferAdmin(address(0xBB));
         assertEq(oracle.pendingAdmin(), address(0xBB));
 
-        // old pending can no longer accept
+        // old pending can no longer accept — a transfer IS in flight, just
+        // not for them, so the correct revert is NotPendingAdmin (not
+        // NoPendingAdmin which would imply pendingAdmin == address(0)).
         vm.prank(address(0xAA));
-        vm.expectRevert(IPoppieEulerOracle.NoPendingAdmin.selector);
+        vm.expectRevert(IPoppieEulerOracle.NotPendingAdmin.selector);
         oracle.acceptAdmin();
 
         // new pending can
@@ -681,5 +688,155 @@ contract PoppieEulerOracleTest is Test {
         // 4. asset is live with keeper's validated price
         assertEq(oracle.getPrice(address(token)), 152e18);
         assertFalse(oracle.getAssetConfig(address(token)).paused);
+    }
+
+    // -------------------------------------------------------------------
+    // Audit L-01 / I-05 — anchor rotation rebases to the current push and
+    // emits AnchorRotated.
+    // -------------------------------------------------------------------
+
+    // mirror of the new event for expectEmit
+    event AnchorRotated(address indexed asset, uint128 oldAnchor, uint128 newAnchor, uint40 timestamp);
+
+    function test_anchor_rotation_emitsEvent() public {
+        _push(140e18);
+        vm.warp(block.timestamp + 86401);
+        uint128[] memory p = new uint128[](1);
+        p[0] = 150e18;
+        vm.expectEmit(true, false, false, true);
+        emit AnchorRotated(address(token), 100e18, 150e18, uint40(block.timestamp));
+        vm.prank(keeper);
+        oracle.keeperPushPrices(_arr(address(token)), p);
+    }
+
+    function test_anchor_rotation_noEventWithinWindow() public {
+        // No rotation occurs within the window, so no AnchorRotated event.
+        // Foundry has no "expectNotEmit" primitive, so we use recordLogs
+        // and assert the topic does not appear.
+        vm.recordLogs();
+        _push(120e18);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        bytes32 sig = keccak256("AnchorRotated(address,uint128,uint128,uint40)");
+        for (uint256 i = 0; i < logs.length; ++i) {
+            assertTrue(logs[i].topics[0] != sig, "AnchorRotated emitted within window");
+        }
+    }
+
+    function test_anchor_rotation_downwardBoundaryNoLongerInflatesDeviation() public {
+        // Pre-fix bug: a directional downtrend across a window boundary would
+        // leave the anchor stuck at the previous (higher) lastPrice, so a
+        // modest continuation move was measured as an outsized deviation
+        // against the trapped anchor. Post-fix the anchor rotates to the
+        // current push, so a small continuation move stays in-band.
+        _push(80e18);   // down 20% from seed 100; anchor unchanged at 100
+        vm.warp(block.timestamp + 86401);
+        // Pre-fix this push would rotate the anchor to 80, and a subsequent
+        // 60→50 (17%) push would be measured against 80 (50→80 = 37.5%).
+        // Post-fix the anchor rotates to 60 here, so any near-60 follow-up
+        // is measured from 60.
+        _push(60e18);
+        IPoppieEulerOracle.AssetConfig memory cfg = oracle.getAssetConfig(address(token));
+        assertEq(cfg.anchorPrice, 60e18, "anchor follows the current push, not the previous one");
+        // a real -17% continuation move from 60 to 50 is well within the
+        // 50% cumulative cap measured from the new anchor (60).
+        _push(50e18);
+        assertEq(oracle.getPrice(address(token)), 50e18);
+    }
+
+    // -------------------------------------------------------------------
+    // Audit L-02 — current design (no explicit adminUnpause) is intentional.
+    // Recovery is a two-step admin-then-keeper handshake: admin reseeds via
+    // adminSetPrice, then the keeper's next valid push auto-unpauses. This
+    // guarantees an unpaused asset is backed by a price that passed the
+    // keeper-side guards rather than just an admin force-write. The existing
+    // test_pause_fullRecoveryFlow / test_pause_keeperUnpausesAfterAdminReference
+    // tests cover this happy path.
+    // -------------------------------------------------------------------
+
+    // -------------------------------------------------------------------
+    // Audit I-03 — per-asset maxPriceAge overrides the global default.
+    // -------------------------------------------------------------------
+
+    event AssetMaxPriceAgeUpdated(address indexed asset, uint40 oldValue, uint40 newValue);
+
+    function test_perAsset_maxPriceAge_overridesGlobal() public {
+        // global is 3600 (1h). Set per-asset to 60s and confirm getPrice
+        // reverts at 61s but global window has not yet elapsed.
+        vm.expectEmit(true, false, false, true);
+        emit AssetMaxPriceAgeUpdated(address(token), 0, 60);
+        vm.prank(admin);
+        oracle.setAssetMaxPriceAge(address(token), 60);
+        IPoppieEulerOracle.AssetConfig memory cfg = oracle.getAssetConfig(address(token));
+        assertEq(cfg.maxPriceAge, 60);
+
+        vm.warp(block.timestamp + 61);
+        vm.expectRevert(IPoppieEulerOracle.StalePrice.selector);
+        oracle.getPrice(address(token));
+    }
+
+    function test_perAsset_maxPriceAge_loosensGlobal() public {
+        // global 3600. Set per-asset to 1 day. After 2 hours the global
+        // window would mark this stale, but the per-asset override keeps it
+        // fresh.
+        vm.prank(admin);
+        oracle.setAssetMaxPriceAge(address(token), 1 days);
+        vm.warp(block.timestamp + 2 hours);
+        // not stale by the per-asset override
+        assertEq(oracle.getPrice(address(token)), 100e18);
+    }
+
+    function test_perAsset_maxPriceAge_zeroFallsBackToGlobal() public {
+        // explicitly set to 100s, then clear (set to 0). The global 3600
+        // applies again.
+        vm.prank(admin);
+        oracle.setAssetMaxPriceAge(address(token), 100);
+        vm.prank(admin);
+        oracle.setAssetMaxPriceAge(address(token), 0);
+        // 101s past last write — would be stale under the per-asset 100s,
+        // but the override is cleared and global is 3600s.
+        vm.warp(block.timestamp + 101);
+        assertEq(oracle.getPrice(address(token)), 100e18);
+    }
+
+    function test_perAsset_maxPriceAge_bothZeroDisablesStaleness() public {
+        // disable global, then leave per-asset at 0. Staleness is fully off.
+        vm.prank(admin);
+        oracle.setMaxPriceAge(0);
+        vm.warp(block.timestamp + 365 days);
+        assertEq(oracle.getPrice(address(token)), 100e18);
+    }
+
+    function test_perAsset_maxPriceAge_revert_notAdmin() public {
+        vm.prank(keeper);
+        vm.expectRevert(IPoppieEulerOracle.OnlyAdmin.selector);
+        oracle.setAssetMaxPriceAge(address(token), 60);
+    }
+
+    function test_perAsset_maxPriceAge_revert_notConfigured() public {
+        MockERC20 t2 = new MockERC20("X", "X", 18);
+        vm.prank(admin);
+        vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.AssetNotConfigured.selector, address(t2)));
+        oracle.setAssetMaxPriceAge(address(t2), 60);
+    }
+
+    // -------------------------------------------------------------------
+    // Audit I-06 — split NoPendingAdmin / NotPendingAdmin.
+    // -------------------------------------------------------------------
+
+    function test_acceptAdmin_revertsNoPendingAdmin_whenNoneSet() public {
+        // pendingAdmin == address(0) — there is no transfer in flight.
+        // Any caller, including the current admin, should get NoPendingAdmin.
+        vm.prank(admin);
+        vm.expectRevert(IPoppieEulerOracle.NoPendingAdmin.selector);
+        oracle.acceptAdmin();
+    }
+
+    function test_acceptAdmin_revertsNotPendingAdmin_whenWrongCaller() public {
+        // A transfer is in flight to 0xEE; anyone else gets NotPendingAdmin.
+        vm.prank(admin);
+        oracle.transferAdmin(address(0xEE));
+        vm.prank(user);
+        vm.expectRevert(IPoppieEulerOracle.NotPendingAdmin.selector);
+        oracle.acceptAdmin();
     }
 }

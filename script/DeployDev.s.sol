@@ -14,6 +14,17 @@ import {PoppieEulerAdapter} from "../src/PoppieEulerAdapter.sol";
 /// ADMIN  = the Safe or EOA that will admin both contracts (can be the deployer for dev).
 /// KEEPER = the KMS-derived address that will push prices.
 ///
+/// NOTE (audit L-03, accepted out-of-scope): the auditor flagged loading
+/// `DEPLOYER_KEY` from an environment variable as an anti-pattern because
+/// env vars leak through process inspection, CI logs, shell history,
+/// container metadata, and log aggregators. We acknowledge this — for any
+/// production deployment with meaningful admin authority the deployer
+/// should be a Foundry keystore (`cast wallet import`, then `--account`),
+/// a hardware signer (`--ledger`, `--trezor`), or a KMS-backed signer
+/// rather than a raw env-var key. These dev scripts retain the env-var
+/// path for repeatability; a separate production deploy script should
+/// not.
+///
 /// After deployment, the admin must:
 ///   1. oracle.configureAssets(addresses, cbThresholds, cumCaps)
 ///   2. adapter.registerBase(token, decimals) for each asset
