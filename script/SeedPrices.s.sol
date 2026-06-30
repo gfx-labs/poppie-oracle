@@ -21,7 +21,7 @@ interface ISSO {
 /// since the seed is the real current price.
 ///
 /// Usage:
-///   source .env && ORACLE=0x8cCFe4A49614DE7F3204D436b254fC874De9AC76 \
+///   source .env && ORACLE=0xAE83F1A1Ea8a4e7CbcaC3551B88E22Baea25f26D \
 ///     forge script script/SeedPrices.s.sol --rpc-url $BSC_RPC_URL --broadcast
 contract SeedPrices is Script {
     // BSC SyntheticSharesOracle

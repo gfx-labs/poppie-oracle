@@ -20,8 +20,8 @@ interface IERC20 {
 /// hardware signer, or KMS rather than `DEPLOYER_KEY`.
 contract ConfigureDev is Script {
     // dev deployments (post-audit redeploy)
-    address constant ORACLE  = 0x8cCFe4A49614DE7F3204D436b254fC874De9AC76;
-    address constant ADAPTER = 0x56a730448E1c8bAd17aFA1a4c4633B9c1214288E;
+    address constant ORACLE  = 0xAE83F1A1Ea8a4e7CbcaC3551B88E22Baea25f26D;
+    address constant ADAPTER = 0x92dad5eEE3245c2aD9766225Ff15beDf650646ea;
 
     // circuit breaker tiers (bps)
     uint256 constant CB_DEFAULT  = 5000;  // 50% — single stocks

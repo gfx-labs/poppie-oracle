@@ -7,6 +7,8 @@ US equities as collateral, USDT borrowable).
 
 | Network | Contract | Address |
 |---------|----------|---------|
+| BSC (prod) | `PoppieEulerOracle` | [`0xAE83F1A1Ea8a4e7CbcaC3551B88E22Baea25f26D`](https://bscscan.com/address/0xAE83F1A1Ea8a4e7CbcaC3551B88E22Baea25f26D) |
+| BSC (prod) | `PoppieEulerAdapter` | [`0x92dad5eEE3245c2aD9766225Ff15beDf650646ea`](https://bscscan.com/address/0x92dad5eEE3245c2aD9766225Ff15beDf650646ea) |
 | BSC (dev) | `PoppieEulerOracle` | [`0x8cCFe4A49614DE7F3204D436b254fC874De9AC76`](https://bscscan.com/address/0x8cCFe4A49614DE7F3204D436b254fC874De9AC76) |
 | BSC (dev) | `PoppieEulerAdapter` | [`0x56a730448E1c8bAd17aFA1a4c4633B9c1214288E`](https://bscscan.com/address/0x56a730448E1c8bAd17aFA1a4c4633B9c1214288E) |
 
