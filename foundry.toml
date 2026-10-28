@@ -2,16 +2,40 @@
 src = "src"
 out = "out"
 libs = ["lib"]
+# solc and evm_version match Euler's Arbitrum deployment. The EVC, EVK
+# (EVault and GenericFactory) and evk-periphery contracts deployed on Arbitrum
+# (chain 42161) are bytecode-verified against solc 0.8.24, evm cancun
+# (euler-xyz/euler-interfaces verify/manifest.json). euler-earn is built with
+# solc 0.8.26 by Euler, but nothing in src/ or test/ imports it, so it is not
+# compiled here.
 solc_version = "0.8.24"
-# evm_version pinned to shanghai (not cancun) to preserve broad chain
-# compatibility — no transient storage (TSTORE/TLOAD) or MCOPY is used.
-evm_version = "shanghai"
+evm_version = "cancun"
 optimizer = true
 optimizer_runs = 200
+# Remappings are explicit and deterministic: do not merge in the remappings.txt of every lib/ repo.
+auto_detect_remappings = false
 
+# Euler repositories are pinned as submodules at the commits behind Euler's
+# Arbitrum deployment (see README, "Dependencies"). Each Euler repo keeps its
+# own nested OpenZeppelin, so the nested copies are selected with
+# context-prefixed remappings instead of being forced onto one version.
 remappings = [
-    "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
     "forge-std/=lib/forge-std/src/",
+    # Poppie's own contracts and evk-periphery (Governor) use the top-level
+    # OpenZeppelin, which is the version evk-periphery pins.
+    "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+    "openzeppelin-contracts/=lib/openzeppelin-contracts/contracts/",
+    "ethereum-vault-connector/=lib/ethereum-vault-connector/src/",
+    "evc/=lib/ethereum-vault-connector/src/",
+    "evk/=lib/euler-vault-kit/src/",
+    "euler-price-oracle/=lib/euler-price-oracle/src/",
+    "evk-periphery/=lib/evk-periphery/src/",
+    "euler-earn/=lib/euler-earn/src/",
+    # EVK, euler-price-oracle and evk-periphery compile against their own pinned nested dependencies.
+    "lib/euler-vault-kit/:openzeppelin-contracts/=lib/euler-vault-kit/lib/openzeppelin-contracts/contracts/",
+    "lib/euler-vault-kit/:permit2/=lib/euler-vault-kit/lib/permit2/",
+    "lib/euler-price-oracle/:@openzeppelin/contracts/=lib/euler-price-oracle/lib/openzeppelin-contracts/contracts/",
+    "lib/evk-periphery/:openzeppelin-contracts-upgradeable/=lib/evk-periphery/lib/openzeppelin-contracts-upgradeable/contracts/",
 ]
 
 [profile.default.fuzz]

@@ -37,7 +37,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          submodules: recursive
+          # Top-level submodules only; the nested ones the build needs come from init-deps.
+          submodules: true
+      - name: Init nested dependencies
+        uses: ./.github/actions/init-deps
       - name: Install Foundry
         uses: ./.github/actions/setup-foundry
       - run: forge --version
@@ -54,7 +57,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          submodules: recursive
+          # Top-level submodules only; the nested ones the build needs come from init-deps.
+          submodules: true
+      - name: Init nested dependencies
+        uses: ./.github/actions/init-deps
       - name: Install Foundry
         uses: ./.github/actions/setup-foundry
       - name: Build
@@ -72,7 +78,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          submodules: recursive
+          # Top-level submodules only; the nested ones the build needs come from init-deps.
+          submodules: true
+      - name: Init nested dependencies
+        uses: ./.github/actions/init-deps
       - name: Install Foundry
         uses: ./.github/actions/setup-foundry
       - name: Run tests (exclude fork tests)
@@ -93,7 +102,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          submodules: recursive
+          # Top-level submodules only; the nested ones the build needs come from init-deps.
+          submodules: true
+      - name: Init nested dependencies
+        uses: ./.github/actions/init-deps
       - name: Install Foundry
         uses: ./.github/actions/setup-foundry
       # crytic/slither-action is not on the org allow-list, so install Slither
@@ -130,7 +142,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          submodules: recursive
+          # Top-level submodules only; the nested ones the build needs come from init-deps.
+          submodules: true
+      - name: Init nested dependencies
+        uses: ./.github/actions/init-deps
       - name: Install Foundry
         uses: ./.github/actions/setup-foundry
       - name: Run fork tests

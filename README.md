@@ -3,6 +3,47 @@
 Custom oracle contracts for the Poppie x Euler V2 lending market (tokenized
 US equities as collateral, USDT borrowable).
 
+> **v2 (Arbitrum) is under construction on the `scale` branch.** `src/`, `test/` and
+> the deployment scripts of v1 (BSC) were removed there and live at the `v1-bsc` tag;
+> the sections below describe v1 and are rewritten before audit. For v2 see `docs/`.
+
+## v2 development
+
+```bash
+git clone <repo> && cd <repo>
+./scripts/init-deps.sh        # submodules, plus the few nested ones the build needs
+forge build && forge fmt --check && forge test
+```
+
+Do not use `git submodule update --init --recursive`: it clones every nested dependency
+of the Euler repos (layerzero, euler-swap, pendle, ...), none of which are compiled here.
+
+### Dependencies
+
+`solc 0.8.24` and `evm_version = cancun` match Euler's Arbitrum deployment. Each Euler
+repository is pinned to the commit behind the contract deployed on Arbitrum (chain 42161),
+taken from the bytecode-verified `verify/manifest.json` in
+[euler-xyz/euler-interfaces](https://github.com/euler-xyz/euler-interfaces):
+
+| Submodule | Commit | Deployed Arbitrum contract it matches |
+|---|---|---|
+| `lib/ethereum-vault-connector` | `a7d3c29` (v1.0.1) | `EthereumVaultConnector` |
+| `lib/euler-vault-kit` | `422bf24` (v1.0.1) | `EVault` implementation |
+| `lib/euler-price-oracle` | `f52cb43` | `EulerRouter` source, via evk-periphery's gitlink |
+| `lib/evk-periphery` | `96b83f8` (v1.8.0) | `EulerRouterFactory`; source of the Governor |
+| `lib/euler-earn` | `b2fd6e6` (v1.0.0) | `EulerEarnFactory` (built by Euler with solc 0.8.26; not compiled here) |
+| `lib/openzeppelin-contracts` | `69c8def` | the version evk-periphery pins |
+
+`GenericFactory` and `ProtocolConfig` are deployed from EVK `9e3c760`, an older commit than
+the `EVault` implementation; the code this repo compiles is the newer `422bf24`.
+
+### Test harness
+
+`test/harness/PoppieTestBase.sol` deploys EVC, EVK factory and implementation, EulerRouter,
+an Euler Governor, mock USDC and a mock equity locally, with no fork. Extend it for EVK-level
+tests; `test/unit/HarnessSmoke.t.sol` shows a vault created through the factory and a price routed
+through the router.
+
 ## Deployments
 
 | Network | Contract | Address |
