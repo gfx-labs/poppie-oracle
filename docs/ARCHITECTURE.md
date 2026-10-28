@@ -10,7 +10,7 @@ Poppie lends USDC on Euler V2 against tokenized equities, from about 100 assets 
 - **Lenders:** deposit USDC into Prime Earn or Yield Earn, which allocate across the hubs.
 - **Governance:** all vaults are governed by Poppie, as on BSC.
 - **Revenue:** interest fee and rate floor per hub, Earn performance fee, and an enforced origination fee. A slice of Poppie's fee funds a loss reserve.
-- **Control:** a risk engine signs changes with KMS keys, and an on-chain steward caps them. Oracle, hook, role and IRM changes go through a 48h timelock.
+- **Control:** a risk engine signs changes with KMS keys, and an on-chain steward caps them. Structural changes (oracle and adapter swaps, hooks, roles, IRMs) go through a 48h timelock; risk parameters, including the oracle's haircuts and price classes, don't.
 - **Closed markets:** accounts stay usable. Borrowing uses a haircut price, and only liquidations pause.
 - **Issuers:** supports Ondo, xStocks, Reality and similar. Tokens whose balances change are wrapped first, and the issuer is tracked as a risk.
 
@@ -163,7 +163,7 @@ Flash loans are off at launch. They can be enabled later so liquidators can use 
 
 | Contract | Count | Controlled by |
 | --- | --- | --- |
-| PoppieEulerOracle (keeps the last confirmed price through pauses) | 1 | `MS_ADMIN` via timelock |
+| PoppieEulerOracle (keeps the last confirmed price through pauses) | 1 | Roles: `MS_ADMIN` via timelock. Risk params (price classes, haircuts, staleness, `n`): `MS_OPS`, instant |
 | Three-state price adapter | 1 | `MS_ADMIN` via timelock |
 | USDC/USD fixed-rate oracle | 1 | Immutable |
 | EulerRouter | 1 | `MS_ADMIN` via timelock; `MS_OPS` can only add new routes |
@@ -189,12 +189,12 @@ Euler's core contracts (EVC, factories, lenses) are used at Euler's Arbitrum add
 | `K_PRICE` | KMS | Push prices | Moves within the class bound go live; larger moves wait for `K_CONFIRM` or n consistent pushes |
 | `K_CONFIRM` | KMS, separate infrastructure | Confirm unconfirmed moves | Only the latest pending price, while fresh. Off-chain rule: only after its own independent checks pass |
 | `K_TIGHTEN` | KMS | Lower LTVs and caps | Instant; liquidation-LTV cuts ≤ 5 pts per call, ramp over ≥ 72h, once per asset per hub per 24h. No limit on how many assets are cut; `MS_OPS` can cancel ramps |
-| `K_LOOSEN` | `MS_OPS` in phase 1; a KMS key in phase 2 | Raise LTVs and caps; add promoted names to hubs | LTVs ≤ 3 pts per change, once per asset per week, up to class ceilings. Caps up to each asset's cap ceiling, with no rate limit. Promotions under launch caps, all hubs in one call |
+| `K_LOOSEN` | `MS_OPS` in phase 1; a KMS key in phase 2 | Raise LTVs and caps; add promoted names to hubs | LTVs ≤ 3 pts per change, once per asset per week, up to class ceilings. Caps (escrow and hub) up to each vault's cap ceiling, with no rate limit. Promotions under launch caps, all hubs in one call |
 | `K_ALLOC` | KMS | Reallocate Earn | Within Earn caps |
-| `K_GUARD` | KMS | Pause deposits and borrows | Each pause lasts ≤ 24h and can be repeated as soon as it expires; never blocks repay or withdraw |
+| `K_GUARD` | KMS | Pause deposits and borrows | Each pause lasts ≤ 24h and can be repeated as soon as it expires; one call can cover many vaults; never blocks repay or withdraw. `MS_OPS` can end a pause early |
 | `K_RESERVE` | KMS | Repay bad debt from the reserve | Hub `repay` only; per-call and daily limits |
-| `MS_OPS` | Safe 3-of-5 | Emergencies, listings (add-only price routes), unpausing, fees, reserve withdrawals, revoking keys, liquidation pauses, ramp cancel, bounded override of borrow LTVs and caps, cap ceilings | Override stays within class LTV ceilings and each asset's cap ceiling. Tighten-only actions are instant |
-| `MS_ADMIN` | Safe 4-of-7 | Oracle, adapter, router, hooks, roles, IRM swaps | 48h timelock; never a KMS key |
+| `MS_OPS` | Safe 3-of-5 | Emergencies, listings (add-only price routes), unpausing (including ending any pause early), fees, oracle risk params, reserve withdrawals, revoking keys, liquidation pauses, ramp cancel, bounded override of borrow LTVs and caps, cap ceilings (escrows and hubs) | Override stays within class LTV ceilings and each vault's cap ceiling. Oracle params within hard bounds (`n` ≥ 2, haircut ≤ 100%). Tighten-only actions are instant |
+| `MS_ADMIN` | Safe 4-of-7 | Oracle, adapter, router, hooks, roles, IRM swaps | 48h timelock; never a KMS key. At launch the deployer key holds the admin role only long enough to grant roles, then hands it to the timelock |
 
 **If a key leaks:**
 
@@ -211,12 +211,12 @@ Poppie publishes signer addresses, these limits and every steward action.
 ### Risk steward limits
 
 - **Tightening:** lowering borrow LTVs and caps is instant, batched, and has no limit on how many assets are changed. Liquidation-LTV cuts are limited per asset: ≤ 5 pts per call, ramp ≥ 72h, once per asset per hub per 24h.
-- **Loosening (`K_LOOSEN`):** LTV raises are ≤ 3 pts per change, once per asset per week, within the class ceiling and the gap rule (5 pts for blue chips, 8 pts for long tail). Cap raises have no rate limit; they are bound only by the asset's cap ceiling.
-- **Cap ceilings:** set per asset by `MS_OPS` from measured exit depth. `MS_OPS` can raise them instantly, so they bind `K_LOOSEN` but not `MS_OPS`, whose limit is policy. `K_LOOSEN` cannot change them, which makes them the only on-chain limit on its cap growth. They must be conservative. Escrow vaults' borrow caps stay at zero and the steward never raises them.
-- **`MS_OPS` override:** `MS_OPS` can set borrow LTVs and caps anywhere up to the class LTV ceilings and each asset's cap ceiling, in batches, without the weekly limit. A borrow LTV still can't exceed the liquidation LTV, and the gap rule still applies. The override does not raise liquidation LTV, except through ramp cancel.
+- **Loosening (`K_LOOSEN`):** LTV raises are ≤ 3 pts per change, once per asset per week, within the class ceiling and the gap rule (5 pts for blue chips, 8 pts for long tail). Cap raises have no rate limit; they are bound only by the vault's cap ceiling.
+- **Cap ceilings:** set per vault by `MS_OPS`: escrow vaults from measured exit depth, hubs from their intended size. Hub caps follow the same rules as escrow caps. `MS_OPS` can raise them instantly, so they bind `K_LOOSEN` but not `MS_OPS`, whose limit is policy. `K_LOOSEN` cannot change them, which makes them the only on-chain limit on its cap growth. They must be conservative. Escrow vaults' borrow caps stay at zero and the steward never raises them.
+- **`MS_OPS` override:** `MS_OPS` can set borrow LTVs and caps anywhere up to the class LTV ceilings and each vault's cap ceiling, in batches, without the weekly limit. A borrow LTV still can't exceed the liquidation LTV, and the gap rule still applies. The override does not raise liquidation LTV, except through ramp cancel.
 - **Ramp cancel:** `MS_OPS` can cancel a liquidation-LTV cut that is still ramping, in batches. It restores the liquidation LTV that was in force before the first cut of the current chain of cuts, which the steward records, and never goes above the class ceiling. It also cancels demotion ramps. Once a ramp has finished, raising the liquidation LTV again goes through the `K_LOOSEN` limits.
-- **Demotion:** a demoted blue chip leaves the other hubs, with its borrow LTV set to 0 at once and its liquidation LTV ramped to 0 over at least (cut ÷ 5 pts) × 24h. In the band hub it stays in, the same rules apply: borrow LTV drops to the new class ceiling at once, and liquidation LTV ramps down over at least (cut ÷ 5 pts) × 24h, never under 72h. Demotions have their own rate limit (proposed: ≤ 3 per rolling 7 days).
-- **Pauses:** `K_GUARD` borrow and deposit pauses follow the same rules: ≤ 24h per call, no cooldown. `MS_OPS` liquidation pauses last ≤ 6h per call and can be repeated back to back.
+- **Demotion:** a demoted blue chip leaves the other hubs, with its borrow LTV set to 0 at once and its liquidation LTV ramped to 0 over at least (cut ÷ 5 pts) × 24h. In the band hub it stays in, the same rules apply: borrow LTV drops to the new class ceiling at once, and liquidation LTV ramps down over at least (cut ÷ 5 pts) × 24h, never under 72h. Demotions have their own rate limit: ≤ 3 per rolling 7 days.
+- **Pauses:** `K_GUARD` borrow and deposit pauses follow the same rules: ≤ 24h per call, no cooldown, many vaults per call. `MS_OPS` liquidation pauses last ≤ 6h per call and can be repeated back to back. `MS_OPS` can end any pause early.
 
 ## Risk automation
 

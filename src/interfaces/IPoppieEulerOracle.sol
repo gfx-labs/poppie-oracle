@@ -4,7 +4,10 @@ pragma solidity ^0.8.24;
 /// @title IPoppieEulerOracle
 /// @notice Price store and state machine for tokenized equities (CONTRACT_SPEC.md section 3.1).
 /// @dev Prices are 18-decimal USD per one whole token (`10 ** decimals` base units).
-///      Roles: `K_PRICE`, `K_CONFIRM`, `MS_OPS`, and `DEFAULT_ADMIN_ROLE` (the timelock).
+///      The ABI push takes `uint128` prices; the packed push carries `uint96` (about 7.9e10 USD per token at
+///      18 decimals), and both go through the same internal function.
+///      Roles: `K_PRICE`, `K_CONFIRM`, `MS_OPS` (listing, unpause, risk params), and `DEFAULT_ADMIN_ROLE`
+///      (role holders only).
 interface IPoppieEulerOracle {
     /// @notice Price state, derived on every read. `Closed` is the zero value so an unset state fails closed.
     /// @dev Closed: `paused`, or `now - max(lastPriceTs, pendingTs) > maxPriceAge`.
@@ -113,13 +116,18 @@ interface IPoppieEulerOracle {
     /// @notice Clear `paused`. Role `MS_OPS`.
     function unpauseAssets(address[] calldata assets) external;
 
-    // -- Admin (DEFAULT_ADMIN_ROLE = timelock) --------------------------------------------------
+    // -- Risk params (MS_OPS, instant) ----------------------------------------------------------
+    // Risk params carry no timelock (like steward overrides and cap ceilings); only the hard bounds below
+    // apply. Role holders stay with `DEFAULT_ADMIN_ROLE` (timelock).
 
     function setAssetClass(address asset, PriceClass priceClass) external;
+    /// @dev Reverts `InvalidParam` if `newHaircutBps > 10_000`.
     function setClassHaircut(PriceClass priceClass, uint16 newHaircutBps) external;
+    /// @dev Reverts `InvalidParam` if zero.
     function setMaxPriceAge(uint40 newMaxPriceAge) external;
     /// @dev Reverts `InvalidParam` if `newN < 2`.
     function setN(uint8 newN) external;
+    /// @dev Reverts `InvalidParam` if zero.
     function setMinPendingSpacing(uint40 newMinPendingSpacing) external;
 
     // -- Views ----------------------------------------------------------------------------------

@@ -38,6 +38,37 @@ contract PoppieAccessControlTest is Test {
         new AccessControlHarness(address(0));
     }
 
+    /// Deploy-script bootstrap: the deployer is the initial admin, grants every role without the timelock
+    /// delay, hands DEFAULT_ADMIN_ROLE to the timelock and renounces, ending with no role.
+    function test_bootstrapHandoverToTimelock() public {
+        address deployer = makeAddr("deployer");
+        AccessControlHarness fresh = new AccessControlHarness(deployer);
+        bytes32 adminRole = fresh.DEFAULT_ADMIN_ROLE();
+
+        vm.startPrank(deployer);
+        fresh.grantRole(MS_OPS, msOps);
+        for (uint256 i; i < keyRoles.length; ++i) {
+            fresh.grantRole(keyRoles[i], key);
+        }
+        fresh.grantRole(adminRole, timelock);
+        fresh.renounceRole(adminRole, deployer);
+        vm.stopPrank();
+
+        assertFalse(fresh.hasRole(adminRole, deployer));
+        assertTrue(fresh.hasRole(adminRole, timelock));
+        assertTrue(fresh.hasRole(MS_OPS, msOps));
+        for (uint256 i; i < keyRoles.length; ++i) {
+            assertTrue(fresh.hasRole(keyRoles[i], key));
+        }
+
+        // The deployer can no longer grant anything.
+        vm.prank(deployer);
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, deployer, adminRole)
+        );
+        fresh.grantRole(K_PRICE, deployer);
+    }
+
     function test_timelockGrantsAndRevokesEveryRole() public {
         for (uint256 i; i < keyRoles.length; ++i) {
             vm.startPrank(timelock);

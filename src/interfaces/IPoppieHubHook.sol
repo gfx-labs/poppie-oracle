@@ -22,13 +22,17 @@ uint40 constant MAX_LIQUIDATION_PAUSE = 6 hours;
 /// | OP_FLASHLOAN            | always revert                                                                      |
 /// | OP_LIQUIDATE            | revert only while a liquidation pause is active                                    |
 ///
-/// Roles: `K_GUARD` (borrow pause), `MS_OPS` (liquidation pause), `DEFAULT_ADMIN_ROLE` (register hubs).
+/// Pause and unpause functions take arrays of hubs, so one call covers every hub.
+/// Roles: `K_GUARD` (borrow pause), `MS_OPS` (liquidation pause, early unpause of either pause),
+/// `DEFAULT_ADMIN_ROLE` (register hubs).
 interface IPoppieHubHook is IHookTarget {
     // -- Events ---------------------------------------------------------------------------------
 
     event HubRegistered(address indexed hub);
     event BorrowsPaused(address indexed hub, uint40 until, address indexed by);
+    event BorrowsUnpaused(address indexed hub, address indexed by);
     event LiquidationsPaused(address indexed hub, uint40 until, address indexed by);
+    event LiquidationsUnpaused(address indexed hub, address indexed by);
 
     // -- Errors ---------------------------------------------------------------------------------
 
@@ -63,13 +67,19 @@ interface IPoppieHubHook is IHookTarget {
     /// @notice Register a hub. Role `DEFAULT_ADMIN_ROLE` (timelock).
     function registerHub(address hub) external;
 
-    /// @notice Pause borrows on `hub` for `duration` seconds (<= `MAX_BORROW_PAUSE`). Role `K_GUARD`.
-    /// No cooldown: it can pause again as soon as the pause expires.
-    function pauseBorrows(address hub, uint40 duration) external;
+    /// @notice Pause borrows on each hub for `duration` seconds (<= `MAX_BORROW_PAUSE`), from now. Role `K_GUARD`.
+    /// No cooldown: it can pause again as soon as the pause expires. Each hub must be registered.
+    function pauseBorrows(address[] calldata hubs, uint40 duration) external;
 
-    /// @notice Pause liquidations on `hub` for `duration` seconds (<= `MAX_LIQUIDATION_PAUSE`). Role `MS_OPS`.
-    /// Calls can be chained back to back.
-    function pauseLiquidations(address hub, uint40 duration) external;
+    /// @notice End a borrow pause early on each hub. Role `MS_OPS`. A no-op for a hub that is not paused.
+    function unpauseBorrows(address[] calldata hubs) external;
+
+    /// @notice Pause liquidations on each hub for `duration` seconds (<= `MAX_LIQUIDATION_PAUSE`), from now.
+    /// Role `MS_OPS`. Calls can be chained back to back. Each hub must be registered.
+    function pauseLiquidations(address[] calldata hubs, uint40 duration) external;
+
+    /// @notice End a liquidation pause early on each hub. Role `MS_OPS`. A no-op for a hub that is not paused.
+    function unpauseLiquidations(address[] calldata hubs) external;
 
     // -- Views ----------------------------------------------------------------------------------
 

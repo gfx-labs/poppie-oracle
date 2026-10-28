@@ -11,6 +11,8 @@ libs = ["lib"]
 solc_version = "0.8.24"
 evm_version = "cancun"
 optimizer = true
+# Euler builds with 20000 runs. Euler's contracts are used at their canonical
+# addresses, so only Poppie's own bytecode depends on this; 200 is deliberate.
 optimizer_runs = 200
 # Remappings are explicit and deterministic: do not merge in the remappings.txt of every lib/ repo.
 auto_detect_remappings = false

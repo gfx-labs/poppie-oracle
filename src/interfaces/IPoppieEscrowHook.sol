@@ -16,11 +16,13 @@ uint40 constant MAX_DEPOSIT_PAUSE = 24 hours;
 /// (`factory.isWrapper`), the oracle is asked about the wrapper's underlying token, which is the only thing
 /// the oracle lists. `transfer` is allowed while `evc.isControlCollateralInProgress()`, so liquidations can
 /// seize collateral during a deposit pause. Withdraw and redeem are never hooked.
-/// Role: `K_GUARD` (deposit pause).
+/// Pause and unpause functions take arrays of vaults, so one call covers every escrow.
+/// Roles: `K_GUARD` (deposit pause), `MS_OPS` (early unpause).
 interface IPoppieEscrowHook is IHookTarget {
     // -- Events ---------------------------------------------------------------------------------
 
     event DepositsPaused(address indexed vault, uint40 until, address indexed by);
+    event DepositsUnpaused(address indexed vault, address indexed by);
 
     // -- Errors ---------------------------------------------------------------------------------
 
@@ -44,9 +46,12 @@ interface IPoppieEscrowHook is IHookTarget {
 
     // -- Governance -----------------------------------------------------------------------------
 
-    /// @notice Pause deposits into `vault` for `duration` seconds (<= `MAX_DEPOSIT_PAUSE`). Role `K_GUARD`.
-    /// No cooldown: it can pause again as soon as the pause expires.
-    function pauseDeposits(address vault, uint40 duration) external;
+    /// @notice Pause deposits into each vault for `duration` seconds (<= `MAX_DEPOSIT_PAUSE`), from now.
+    /// Role `K_GUARD`. No cooldown: it can pause again as soon as the pause expires.
+    function pauseDeposits(address[] calldata vaults, uint40 duration) external;
+
+    /// @notice End a deposit pause early on each vault. Role `MS_OPS`. A no-op for a vault that is not paused.
+    function unpauseDeposits(address[] calldata vaults) external;
 
     // -- Views ----------------------------------------------------------------------------------
 

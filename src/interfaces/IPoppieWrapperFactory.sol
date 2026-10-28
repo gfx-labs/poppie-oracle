@@ -12,11 +12,13 @@ interface IPoppieWrapperFactory {
 
     error ZeroAddress();
     error WrapperAlreadyExists(address token, address wrapper);
-    /// @dev `seedAmount` is below `minSeedAmount()`.
-    error SeedTooLow(uint256 seedAmount, uint256 minSeedAmount);
+    /// @dev `seedAmount` is zero.
+    error ZeroSeed();
 
-    /// @notice Deploy the wrapper for `token`, pulling `seedAmount` from the caller as the seed deposit.
-    /// The caller must have approved the factory. Seed shares are locked permanently.
+    /// @notice Deploy the wrapper for `token`, pulling `seedAmount` (> 0, raw token units) from the caller as
+    /// the seed deposit. The caller must have approved the factory. Seed shares are locked permanently.
+    /// @dev No minimum beyond non-zero: the wrapper's virtual share offset already makes first-depositor
+    /// inflation unprofitable, and wrappers are identical whoever creates them.
     function createWrapper(address token, uint256 seedAmount) external returns (address wrapper);
 
     /// @notice Change the dividend recipient. Role `DEFAULT_ADMIN_ROLE` (timelock).
@@ -30,6 +32,4 @@ interface IPoppieWrapperFactory {
     function wrapperOf(address token) external view returns (address);
     /// @notice Where `sweep` sends non-underlying tokens (the reserve Safe).
     function dividendRecipient() external view returns (address);
-    /// @notice Minimum seed deposit, in raw units of the wrapped token.
-    function minSeedAmount() external view returns (uint256);
 }

@@ -9,6 +9,8 @@ pragma solidity ^0.8.24;
 ///      - Caps are EVK's 16-bit AmountCap encoding, passed raw: raw 0 means unlimited, "zero" is raw 1.
 ///        The steward compares resolved amounts, rounds down after encoding and never writes raw 0.
 ///        Cap ceilings use the same encoding and must not be raw 0.
+///      - Cap ceilings are stored per vault. The cap functions accept the escrow vault of a listed asset or a
+///        registered hub (hub-level supply and borrow caps follow the same rules as escrow caps).
 ///      - Durations are seconds.
 ///      Every mutating function takes arrays so a batch (up to 500 entries) is one call. A blue-chip change
 ///      is applied to every hub in the same call, whichever hub the entry names.
@@ -29,8 +31,6 @@ interface IPoppieRiskSteward {
         address escrow; // escrow vault holding the token or its wrapper
         RiskClass riskClass;
         address bandHub; // the long-tail band hub; zero for BlueChip
-        uint16 supplyCapCeiling; // raw AmountCap, never 0
-        uint16 borrowCapCeiling; // raw AmountCap; the escrow borrow cap stays raw 1
         bool listed;
     }
 
@@ -60,6 +60,8 @@ interface IPoppieRiskSteward {
         uint16 borrowCap;
     }
 
+    /// @dev `vault` is an escrow vault or a hub. For an escrow, `borrowCapCeiling` is unused: its borrow cap
+    /// stays raw 1.
     struct CapCeilingChange {
         address vault;
         uint16 supplyCapCeiling;
@@ -101,9 +103,13 @@ interface IPoppieRiskSteward {
     error LengthMismatch();
     error UnknownHub(address hub);
     error UnknownAsset(address asset);
+    /// @dev Not the escrow vault of a listed asset, nor a registered hub.
+    error UnknownVault(address vault);
     error AlreadyListed(address asset);
     error AlreadyPromoted(address asset);
     error NotBlueChip(address asset);
+    /// @dev `hub` is not in band `expected`.
+    error WrongBand(address hub, RiskClass expected);
     /// @dev A lowering function was given a value that is not lower, or a raise one that is not higher.
     error NotALowering(address hub, address asset);
     error NotARaise(address hub, address asset);
@@ -127,7 +133,8 @@ interface IPoppieRiskSteward {
     /// @dev Launch limits on `list`: LTV <= 50% of class ceiling, supply cap <= 25% of cap ceiling.
     error ExceedsLaunchLimit(address asset);
     error NoActiveRamp(address hub, address asset);
-    error PromoteMustCoverAllHubs();
+    /// @dev The vault has no cap ceiling yet (`setCapCeiling` first).
+    error CapCeilingNotSet(address vault);
 
     // -- K_TIGHTEN ------------------------------------------------------------------------------
 
@@ -138,13 +145,14 @@ interface IPoppieRiskSteward {
     /// asset per hub per 24h. No limit on how many assets are cut per day.
     function lowerLiquidationLTV(LiquidationLtvChange[] calldata changes) external;
 
-    /// @notice Lower caps, down to current usage; below that needs `overrideCaps`.
+    /// @notice Lower caps on escrow vaults or hubs, down to current usage; below that needs `overrideCaps`.
     function lowerCaps(CapChange[] calldata changes) external;
 
     /// @notice Demote an asset to long tail. In hubs it is leaving: borrow LTV to 0 at once, liquidation LTV
     /// ramps to 0 over >= (cut / 5 pts) x 24h. In the band hub it stays in: borrow LTV drops to the new class
     /// ceiling at once and liquidation LTV ramps down over >= (cut / 5 pts) x 24h, never under 72h.
-    /// Rate limit: <= 3 per rolling 7 days.
+    /// Rate limit: <= 3 per rolling 7 days. `bandHub` must be a registered hub whose band is `newClass`
+    /// (several hubs may share a band, so it cannot be derived), else `WrongBand`.
     function demote(address asset, RiskClass newClass, address bandHub) external;
 
     // -- K_LOOSEN -------------------------------------------------------------------------------
@@ -152,12 +160,12 @@ interface IPoppieRiskSteward {
     /// @notice Raise LTVs. <= 3 pts per change; once per asset per 7 days; <= class ceiling; gap rule.
     function raiseLTV(LtvRaise[] calldata raises) external;
 
-    /// @notice Raise caps up to each asset's cap ceiling, with no rate limit.
+    /// @notice Raise caps on escrow vaults or hubs up to each vault's cap ceiling, with no rate limit.
     function raiseCaps(CapChange[] calldata changes) external;
 
-    /// @notice List a newly promoted blue chip in every hub, in one call, at launch limits. All-or-nothing:
-    /// `allHubs` must be every hub, else `PromoteMustCoverAllHubs`.
-    function promote(address asset, address[] calldata allHubs) external;
+    /// @notice List a newly promoted blue chip in every stored hub (`hubs()`), in one call, at launch limits.
+    /// All-or-nothing.
+    function promote(address asset) external;
 
     // -- DEFAULT_ADMIN_ROLE (timelock) ----------------------------------------------------------
 
@@ -168,10 +176,12 @@ interface IPoppieRiskSteward {
     // -- MS_OPS ---------------------------------------------------------------------------------
 
     /// @notice New listing: LTV <= 50% of the class ceiling, supply cap <= 25% of the cap ceiling.
-    /// The cap ceilings must be set first (`setCapCeiling`).
+    /// The escrow's cap ceilings must be set first (`setCapCeiling`), else `CapCeilingNotSet`.
     function list(Listing[] calldata listings) external;
 
-    /// @notice Set or raise cap ceilings, instantly. Binds `K_LOOSEN`, which cannot change them.
+    /// @notice Set, raise or lower cap ceilings of any escrow vault or hub, instantly. Binds `K_LOOSEN`, which
+    /// cannot change them. Lowering a ceiling does not lower the current caps. Accepts a vault that is not
+    /// listed yet, so ceilings can be set before `list`.
     function setCapCeiling(CapCeilingChange[] calldata changes) external;
 
     /// @notice Set the borrow LTV anywhere up to the class ceiling, without the weekly limit. The borrow LTV
@@ -195,6 +205,8 @@ interface IPoppieRiskSteward {
     function hubBand(address hub) external view returns (RiskClass);
     /// @notice Liquidation LTV in force before the current chain of cuts; 0 when no chain is active.
     function liquidationLtvBaseline(address hub, address asset) external view returns (uint16);
+    /// @notice Raw AmountCap ceilings of an escrow vault or hub; (0, 0) when unset.
+    function capCeilings(address vault) external view returns (uint16 supplyCapCeiling, uint16 borrowCapCeiling);
     /// @notice (borrow, liquidation) LTV ceilings for a class.
     function classCeilings(RiskClass riskClass) external view returns (uint16 borrowLtv, uint16 liquidationLtv);
 }

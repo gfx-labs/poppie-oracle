@@ -4,11 +4,13 @@ pragma solidity ^0.8.24;
 // Role identifiers shared by every Poppie contract (CONTRACT_SPEC.md section 4).
 //
 // `MS_ADMIN` (Safe 4-of-7) is not a role on any contract: it proposes to the 48h
-// timelock, and the timelock holds `DEFAULT_ADMIN_ROLE` (see PoppieAccessControl).
+// timelock, and the timelock holds `DEFAULT_ADMIN_ROLE` once the deploy script has
+// handed it over (see PoppieAccessControl).
 // Every "MS_ADMIN via timelock" function is therefore `onlyRole(DEFAULT_ADMIN_ROLE)`.
 
-/// @dev Safe 3-of-5. Unpause, listing, fees, liquidation pause, emergency LTV cuts, steward override,
-/// ramp cancel, cap ceilings, key revocation. Can revoke `K_*` roles but never grant them.
+/// @dev Safe 3-of-5. Unpause (assets, and early end of any pause), listing, fees, oracle risk params, liquidation
+/// pause, emergency LTV cuts, steward override, ramp cancel, cap ceilings, key revocation. Can revoke `K_*` roles
+/// but never grant them.
 bytes32 constant MS_OPS = keccak256("MS_OPS");
 
 /// @dev KMS. Oracle: push (both formats), pause.

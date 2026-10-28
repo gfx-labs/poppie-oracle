@@ -86,6 +86,30 @@ contract InterfacesTest is PoppieTestBase {
         assertEq(IPoppieBalanceWrapper.sweep.selector, bytes4(keccak256("sweep(address)")));
     }
 
+    function test_wrapperFactorySelectors() public pure {
+        assertEq(IPoppieWrapperFactory.createWrapper.selector, bytes4(keccak256("createWrapper(address,uint256)")));
+    }
+
+    /// Pause and unpause functions are batched (arrays of vaults); MS_OPS can end any pause early.
+    function test_pauseSelectorsAreBatched() public pure {
+        assertEq(IPoppieHubHook.pauseBorrows.selector, bytes4(keccak256("pauseBorrows(address[],uint40)")));
+        assertEq(IPoppieHubHook.unpauseBorrows.selector, bytes4(keccak256("unpauseBorrows(address[])")));
+        assertEq(IPoppieHubHook.pauseLiquidations.selector, bytes4(keccak256("pauseLiquidations(address[],uint40)")));
+        assertEq(IPoppieHubHook.unpauseLiquidations.selector, bytes4(keccak256("unpauseLiquidations(address[])")));
+        assertEq(IPoppieEscrowHook.pauseDeposits.selector, bytes4(keccak256("pauseDeposits(address[],uint40)")));
+        assertEq(IPoppieEscrowHook.unpauseDeposits.selector, bytes4(keccak256("unpauseDeposits(address[])")));
+    }
+
+    function test_stewardSelectors() public pure {
+        assertEq(IPoppieRiskSteward.promote.selector, bytes4(keccak256("promote(address)")));
+        assertEq(IPoppieRiskSteward.demote.selector, bytes4(keccak256("demote(address,uint8,address)")));
+        assertEq(IPoppieRiskSteward.addHub.selector, bytes4(keccak256("addHub(address,uint8)")));
+        assertEq(
+            IPoppieRiskSteward.setCapCeiling.selector, bytes4(keccak256("setCapCeiling((address,uint16,uint16)[])"))
+        );
+        assertEq(IPoppieRiskSteward.capCeilings.selector, bytes4(keccak256("capCeilings(address)")));
+    }
+
     function test_oracleViewSelectors() public pure {
         assertEq(IPoppieEulerOracle.state.selector, bytes4(keccak256("state(address)")));
         assertEq(IPoppieEulerOracle.getQuoteData.selector, bytes4(keccak256("getQuoteData(address)")));

@@ -37,12 +37,19 @@ taken from the bytecode-verified `verify/manifest.json` in
 `GenericFactory` and `ProtocolConfig` are deployed from EVK `9e3c760`, an older commit than
 the `EVault` implementation; the code this repo compiles is the newer `422bf24`.
 
+evk-periphery `b54367e` (which adds the Governor factory) is newer but points at different
+EVC/EVK gitlinks than the deployed contracts, so `96b83f8` is kept. `optimizer_runs = 200`
+differs from Euler's 20000 on purpose: Euler's contracts are used at their canonical
+addresses, so only Poppie's own bytecode depends on this setting.
+
 ### Test harness
 
 `test/harness/PoppieTestBase.sol` deploys EVC, EVK factory and implementation, EulerRouter,
 an Euler Governor, mock USDC and a mock equity locally, with no fork. Extend it for EVK-level
 tests; `test/unit/HarnessSmoke.t.sol` shows a vault created through the factory and a price routed
-through the router.
+through the router. The Governor is `GovernorAccessControl`. Permit2 and the balance tracker are
+`address(0)`: a codeless non-zero Permit2 would make EVK's permit2 call "succeed" without moving
+tokens. Fork tests use the real Permit2.
 
 ## Deployments
 

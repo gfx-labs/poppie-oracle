@@ -6,17 +6,24 @@ import {MS_OPS, K_PRICE, K_CONFIRM, K_TIGHTEN, K_LOOSEN, K_ALLOC, K_GUARD, K_RES
 
 /// @title PoppieAccessControl
 /// @notice Shared role base for every Poppie contract that has roles.
-/// @dev - The timelock holds `DEFAULT_ADMIN_ROLE`. It is the only account that can grant any role.
+/// @dev - `DEFAULT_ADMIN_ROLE` is the only role that can grant any role. In steady state the timelock is its
+///        only holder.
+///      - Bootstrapping: the constructor grants `DEFAULT_ADMIN_ROLE` to `initialAdmin`. The deploy script
+///        passes the deployer key, grants every role and does the one-off setup (e.g. hub registration), then
+///        grants `DEFAULT_ADMIN_ROLE` to the timelock and renounces its own roles, so launch never waits on
+///        the 48h delay. The configuration check asserts the deployer holds no role afterwards. Passing the
+///        timelock directly is also valid.
 ///      - `MS_OPS` can revoke the `K_*` roles but cannot grant them (or anything else).
-///      - Every other role keeps OpenZeppelin's rule: only the role admin (the timelock) revokes it.
+///      - Every other role keeps OpenZeppelin's rule: only the role admin (`DEFAULT_ADMIN_ROLE`) revokes it.
 ///      Role identifiers live in `Roles.sol`. Derived contracts gate functions with `onlyRole(...)`.
 abstract contract PoppieAccessControl is AccessControl {
     error ZeroAddress();
 
-    /// @param timelock Receives `DEFAULT_ADMIN_ROLE`. Must be non-zero.
-    constructor(address timelock) {
-        if (timelock == address(0)) revert ZeroAddress();
-        _grantRole(DEFAULT_ADMIN_ROLE, timelock);
+    /// @param initialAdmin Receives `DEFAULT_ADMIN_ROLE`: the deployer key (handed to the timelock at the end
+    /// of the deploy script) or the timelock itself. Must be non-zero.
+    constructor(address initialAdmin) {
+        if (initialAdmin == address(0)) revert ZeroAddress();
+        _grantRole(DEFAULT_ADMIN_ROLE, initialAdmin);
     }
 
     /// @notice True for the key roles that `MS_OPS` is allowed to revoke.
@@ -26,7 +33,7 @@ abstract contract PoppieAccessControl is AccessControl {
     }
 
     /// @notice Revokes `role` from `account`.
-    /// @dev Callable by the role admin (the timelock), or by `MS_OPS` when `role` is a `K_*` role.
+    /// @dev Callable by the role admin (`DEFAULT_ADMIN_ROLE`), or by `MS_OPS` when `role` is a `K_*` role.
     function revokeRole(bytes32 role, address account) public virtual override {
         if (isKeyRole(role) && hasRole(MS_OPS, _msgSender())) {
             _revokeRole(role, account);
