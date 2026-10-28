@@ -1,9 +1,0 @@
-name: probe-checkout5
-on:
-  push:
-    branches: [scale]
-jobs:
-  p:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5

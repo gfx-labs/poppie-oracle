@@ -1,9 +1,0 @@
-name: probe-plain
-on:
-  push:
-    branches: [scale]
-jobs:
-  p:
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo ok
