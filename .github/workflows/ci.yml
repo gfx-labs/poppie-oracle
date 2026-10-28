@@ -1,9 +1,10 @@
 name: CI
 
 # Runs on every PR targeting `scale` and on pushes to `scale`.
-# This workflow is verification only. It never merges, approves, or pushes
-# anything, and it deliberately does not run for `main`; merging is a manual,
-# human decision.
+# It deliberately does not run for `main`. The only write it performs is the
+# final "Auto-merge into scale" job, which squash-merges a non-draft `pop-*` PR
+# from this repo once all four gating jobs pass, and refuses PRs that touch CI,
+# agent rules or build config (those need a human merge).
 # Gating jobs: Format check, Build, Tests (local), Slither.
 # Advisory only: Tests (fork) — see below.
 
@@ -160,3 +161,34 @@ jobs:
           fi
           # `arbitrum` alias is defined in foundry.toml and resolves ALCHEMY_API_KEY.
           forge test -vvv --match-path "test/fork/**" --fork-url arbitrum
+
+  # ----------------------------------------------------------------------------
+  # 6. Merge gate — merges the PR into scale only if all four gating jobs pass.
+  #    Stand-in for GitHub auto-merge + branch protection (no repo admin access).
+  # ----------------------------------------------------------------------------
+  automerge:
+    name: Auto-merge into scale
+    needs: [fmt, build, test, slither]
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      startsWith(github.head_ref, 'pop-')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      PR: ${{ github.event.pull_request.number }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Refuse PRs that change CI or agent rules
+        run: |
+          changed=$(gh pr diff "$PR" --repo "$REPO" --name-only)
+          if echo "$changed" | grep -qE '^(\.github/|AGENTS\.md$|\.hermes\.md$|slither\.config\.json$|foundry\.toml$)'; then
+            echo "::error::PR changes CI, agent rules, or build config; a human must merge it."
+            exit 1
+          fi
+      - name: Merge
+        run: gh pr merge "$PR" --repo "$REPO" --squash --delete-branch
