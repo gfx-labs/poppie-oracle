@@ -25,6 +25,33 @@
 - [x] **Q10. Exposure caps per issuer and underlying stock:** on-chain (steward) or off-chain only? *Blocks: risk steward.*
   - **Resolution:** off-chain only.
 
+## Interface decisions (POP-5, resolved Oct 28 2026)
+
+Raised while fixing the interfaces in `src/interfaces/`. All folded into `CONTRACT_SPEC.md`, `V2_PLAN.md` and `ARCHITECTURE.md`. The bias throughout: less code, fewer on-chain restrictions, fewer timelocks, less human work.
+
+- [x] **Q13. Steward batching.** The spec rows said "batched" but showed scalar signatures.
+  - **Resolution:** every mutating steward function except `promote`, `demote` and `addHub` takes an array of structs; one call is one batch (up to 500). A single change is a length-1 array.
+- [x] **Q14. `demote` arguments.** `demote(asset)` can't know the target class or band hub, and several hubs may share a band.
+  - **Resolution:** `demote(asset, newClass, bandHub)`; `bandHub` must be registered in band `newClass` (`WrongBand`).
+- [x] **Q15. Steward hub registry.** The steward stores the hub list and bands but had no setter.
+  - **Resolution:** `addHub(hub, band)`, role `DEFAULT_ADMIN_ROLE`, mirroring the hub hook's `registerHub`.
+- [x] **Q16. Cap ceiling encoding, and hub-level caps** (spec §8).
+  - **Resolution:** ceilings use the same raw 16-bit AmountCap as caps (never raw 0), and are stored **per vault**, so hubs get ceilings too. `setCapCeiling` takes supply and borrow ceilings. Hub caps follow the escrow rules: `MS_OPS` sets ceilings, `K_LOOSEN` raises up to them, `K_TIGHTEN` lowers, `MS_OPS` overrides.
+- [x] **Q17. Oracle risk params and the timelock.** The spec put the class haircut, price class, `maxPriceAge`, `n` and `minPendingSpacing` behind the 48h timelock, which conflicted with "no timelock on risk params" and lagged steward demotions by 48h.
+  - **Resolution:** all five setters are `MS_OPS`, instant, with hard bounds only (haircut <= 10,000 bps, `n >= 2`, non-zero durations). One setter per param; events `AssetClassSet`, `ClassHaircutSet`, and `ParamsUpdated(maxPriceAge, n, minPendingSpacing)` as a snapshot. `PriceState` is `Closed = 0, Unconfirmed, Live` so an unset state fails closed. Prices are `uint128` in the ABI and `uint96` in the packed format.
+- [x] **Q18. Wrapper minimum seed.** A factory-wide raw-unit minimum doesn't work across decimals.
+  - **Resolution:** dropped. `createWrapper(token, seedAmount)` requires only `seedAmount > 0`; the virtual share offset handles first-depositor inflation.
+- [x] **Q19. Who ends a `K_GUARD` pause early** (spec §8).
+  - **Resolution:** `MS_OPS`, via `unpauseBorrows`, `unpauseDeposits` and `unpauseLiquidations`. All pause and unpause functions take arrays of vaults so one call covers every hub or escrow.
+- [x] **Q20. `promote` hub list.** Passing every hub only added a failure mode.
+  - **Resolution:** `promote(asset)` uses the stored hub list.
+- [x] **Q21. Hook <-> router circularity.**
+  - **Resolution:** no setter. Both addresses are immutable; the deploy script precomputes the CREATE address and asserts it (POP-9).
+- [x] **Q22. Role bootstrapping.** With the timelock as the only admin, launch role grants would each wait 48h.
+  - **Resolution:** `PoppieAccessControl(initialAdmin)`. The deploy script passes the deployer key, grants every role, registers hubs, then grants `DEFAULT_ADMIN_ROLE` to the timelock and renounces. The configuration check fails if the deployer keeps any role.
+- [x] **Q23. Dependency pins and test harness.**
+  - **Resolution:** evk-periphery `96b83f8` (its EVC/EVK/Earn gitlinks match the deployed contracts; the newer `b54367e` does not); top-level OpenZeppelin `69c8def` (v5.1.0); `optimizer_runs = 200`, since Euler contracts are used at their canonical addresses and only Poppie bytecode depends on it. The local harness uses `GovernorAccessControl` and zero Permit2 / balance tracker; fork tests use the real Permit2.
+
 ## Deferred
 
 - [ ] **Q11. Issuer-freeze monitoring in the fork rehearsal:** no monitoring exists in this repo. Should the fork test only assert the on-chain symptom, with monitoring tracked as a separate off-chain ticket? *Blocks: fork rehearsal (test scope only).*

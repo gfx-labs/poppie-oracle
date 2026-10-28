@@ -1,0 +1,12 @@
+name: Init dependencies
+description: >
+  Initialise the Euler submodules and the few nested submodules the build uses
+  (scripts/init-deps.sh). Used instead of `submodules: recursive`, which would clone
+  every nested dependency of the Euler repos.
+
+runs:
+  using: composite
+  steps:
+    - name: Init submodules
+      shell: bash
+      run: ./scripts/init-deps.sh

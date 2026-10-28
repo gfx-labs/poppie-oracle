@@ -1,22 +1,21 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity 0.8.24;
 
-/// @title MockERC20
-/// @notice Minimal mock ERC20 with configurable decimals for testing.
-contract MockERC20 {
-    string public name;
-    string public symbol;
-    uint8 public decimals;
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-    constructor(string memory _name, string memory _symbol, uint8 _decimals) {
-        name = _name;
-        symbol = _symbol;
-        decimals = _decimals;
+/// @notice Minimal mintable ERC20 with configurable decimals. Used for mock USDC (6) and mock equities (18).
+contract MockERC20 is ERC20 {
+    uint8 private immutable _decimals;
+
+    constructor(string memory name_, string memory symbol_, uint8 decimals_) ERC20(name_, symbol_) {
+        _decimals = decimals_;
     }
 
-    /// @notice Test helper to mutate decimals after deployment (e.g. to verify an
-    ///         adapter uses cached decimals rather than a live decimals() call).
-    function setDecimals(uint8 _decimals) external {
-        decimals = _decimals;
+    function decimals() public view override returns (uint8) {
+        return _decimals;
+    }
+
+    function mint(address to, uint256 amount) external {
+        _mint(to, amount);
     }
 }

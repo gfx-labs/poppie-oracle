@@ -1,213 +1,157 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.24;
+pragma solidity ^0.8.24;
 
 /// @title IPoppieEulerOracle
-/// @notice Stores 18-decimal USD prices pushed by a keeper, read by PoppieEulerAdapter.
+/// @notice Price store and state machine for tokenized equities (CONTRACT_SPEC.md section 3.1).
+/// @dev Prices are 18-decimal USD per one whole token (`10 ** decimals` base units).
+///      The ABI push takes `uint128` prices; the packed push carries `uint96` (about 7.9e10 USD per token at
+///      18 decimals), and both go through the same internal function.
+///      Roles: `K_PRICE`, `K_CONFIRM`, `MS_OPS` (listing, unpause, risk params), and `DEFAULT_ADMIN_ROLE`
+///      (role holders only).
 interface IPoppieEulerOracle {
-    /// @dev Packed into 2 storage slots (down from 8).
-    ///      Slot 1: configured(1) + paused(1) + cbThreshold(2) + cumCap(2)
-    ///              + lastTimestamp(5) + anchorTimestamp(5) + lastPrice(16) = 32
-    ///      Slot 2: anchorPrice(16) + maxPriceAge(5) + [11 free]
-    ///
-    ///      Prices are uint128 (always positive — the contract rejects
-    ///      non-positive writes). getPrice returns int256 for Euler
-    ///      compatibility by casting on read.
-    ///
-    ///      `maxPriceAge` is per-asset: when non-zero it overrides the global
-    ///      `maxPriceAge` for this asset. When zero, the global default
-    ///      applies. A uint40 fits 34,000+ years which is well beyond any
-    ///      sensible staleness window.
-    struct AssetConfig {
-        bool configured; // 1 byte
-        bool paused; // 1 byte
-        uint16 circuitBreakerThreshold; // bps; max 10000; 0 disables
-        uint16 cumulativeDeviationCap; // bps; max 10000; 0 disables
-        uint40 lastPriceTimestamp; // unix seconds
-        uint40 anchorTimestamp; // unix seconds
-        uint128 lastPrice; // 18 decimals; 0 = unseeded
-        // (fresh-configured, or freshly-paused;
-        // admin must call `adminSetPrice`
-        // before keeper can push)
-        // --- slot boundary ---
-        uint128 anchorPrice; // 18 decimals; cumulative check reference
-        uint40 maxPriceAge; // 0 = inherit global; non-zero = per-asset override
+    /// @notice Price state, derived on every read. `Closed` is the zero value so an unset state fails closed.
+    /// @dev Closed: `paused`, or `now - max(lastPriceTs, pendingTs) > maxPriceAge`.
+    ///      Unconfirmed: not closed and `pendingCount > 0`. Live: otherwise.
+    enum PriceState {
+        Closed,
+        Unconfirmed,
+        Live
     }
 
-    // ── Errors ──────────────────────────────────────────────────────────
+    /// @notice Price class. Sets the haircut `h`. Separate from the steward's risk class.
+    enum PriceClass {
+        BlueChip,
+        M1,
+        M2,
+        M3
+    }
+
+    /// @notice Full per-asset record, hot slot first, then the pending slot.
+    /// @dev Hot slot (written on every push): 16+5+1+1+1+1+1+1+2 = 29 bytes. Pending slot: 16+5 bytes.
+    struct AssetData {
+        uint128 lastPrice; // last confirmed price; 0 means never confirmed
+        uint40 lastPriceTs;
+        uint8 pendingCount;
+        int8 pendingDir; // +1 or -1; 0 when nothing is pending
+        bool paused;
+        PriceClass priceClass;
+        uint8 decimals; // of the underlying token, <= 18
+        bool listed;
+        uint16 id; // compact id used by keeperPushPacked
+        uint128 pendingPrice;
+        uint40 pendingTs;
+    }
+
+    /// @notice Everything the adapter and the escrow hook need, in one call.
+    struct QuoteData {
+        PriceState state;
+        uint128 lastPrice; // `L`
+        uint128 pendingPrice; // `P`; 0 unless a move is pending
+        uint16 haircutBps; // `h` of the asset's price class
+        uint8 decimals;
+    }
+
+    // -- Events ---------------------------------------------------------------------------------
+
+    event AssetListed(address indexed asset, uint16 indexed id, PriceClass priceClass, uint8 decimals);
+    /// @notice A push within the bound, or a promotion, set the live price.
+    event PriceLive(address indexed asset, uint128 price);
+    event PricePending(address indexed asset, uint128 price, uint8 count, int8 dir);
+    event PriceConfirmed(address indexed asset, uint128 price, address indexed by);
+    /// @notice `n` correctly spaced same-direction pushes took a pending price live.
+    event PricePromotedByPersistence(address indexed asset, uint128 price);
+    event AssetPaused(address indexed asset, address indexed by);
+    event AssetUnpaused(address indexed asset, address indexed by);
+    event ParamsUpdated(uint40 maxPriceAge, uint8 n, uint40 minPendingSpacing);
+    event AssetClassSet(address indexed asset, PriceClass priceClass);
+    event ClassHaircutSet(PriceClass indexed priceClass, uint16 haircutBps);
+
+    // -- Errors ---------------------------------------------------------------------------------
 
     error ZeroAddress();
     error LengthMismatch();
-    error InvalidConfig();
-    error InvalidPrice();
-    error PriceNotInitialized();
-    error StalePrice();
-    error AssetNotConfigured(address asset);
-    error AssetAlreadyConfigured(address asset);
-    error CircuitBreakerTriggered(address asset, uint256 deviationBps, uint256 threshold);
-    error CumulativeDeviationExceeded(address asset, uint256 deviationBps, uint256 cap);
-    error OnlyAdmin();
-    error OnlyKeeper();
-    error OnlyKeeperOrAdmin();
-    /// @dev Raised by `acceptAdmin` when no pending admin transfer is in flight
-    ///      (i.e. `pendingAdmin == address(0)`). Distinct from `NotPendingAdmin`
-    ///      which signals an unauthorized caller during an active transfer.
-    error NoPendingAdmin();
-    /// @dev Raised by `acceptAdmin` when a pending admin transfer is in flight
-    ///      but the caller is not the pending admin. Distinguishing this from
-    ///      `NoPendingAdmin` lets off-chain monitoring tell a benign
-    ///      configuration state apart from an unauthorized take-over attempt.
-    error NotPendingAdmin();
+    error AssetNotListed(address asset);
+    error AssetAlreadyListed(address asset);
+    error TooManyAssets();
+    error DecimalsTooHigh(uint8 decimals);
     error AssetIsPaused(address asset);
-    error AssetAlreadyPaused(address asset);
+    error InvalidPrice();
+    /// @dev Packed payload length is not a multiple of 14.
+    error InvalidPackedLength(uint256 length);
+    error UnknownAssetId(uint16 id);
+    error NothingPending(address asset);
+    error PendingPriceMismatch(address asset, uint128 pending, uint128 given);
+    error PendingPriceStale(address asset);
+    /// @dev `n` must be >= 2; `maxPriceAge` and `minPendingSpacing` non-zero; haircut <= 10_000 bps.
+    error InvalidParam();
 
-    // ── Events ──────────────────────────────────────────────────────────
+    // -- Keeper (K_PRICE) -----------------------------------------------------------------------
 
-    event AssetConfigured(address indexed asset, uint16 circuitBreakerThreshold, uint16 cumulativeDeviationCap);
-    event AssetThresholdsUpdated(address indexed asset, uint16 circuitBreakerThreshold, uint16 cumulativeDeviationCap);
-    event KeeperUpdated(address indexed oldKeeper, address indexed newKeeper);
-    event AdminTransferStarted(address indexed currentAdmin, address indexed pendingAdmin);
-    event AdminTransferred(address indexed oldAdmin, address indexed newAdmin);
-    /// @notice Emitted once per asset for every accepted keeper push. Indexers
-    ///         should subscribe to this event (not `PricesRefreshed`) to track
-    ///         price history, since the topic-indexed `asset` is filterable.
-    event PriceUpdated(address indexed asset, uint128 oldPrice, uint128 newPrice, uint40 timestamp);
-
-    /// @notice Emitted once per `keeperPushPrices` call as a tx-level marker.
-    ///         Carries the unindexed batch contents. Use `PriceUpdated` for
-    ///         per-asset history.
-    event PricesRefreshed(address[] assets);
-    event OracleDeployed(address indexed admin, address indexed keeper, uint256 maxPriceAge, uint256 anchorWindow);
-    event MaxPriceAgeUpdated(uint256 oldValue, uint256 newValue);
-    /// @notice Emitted whenever the per-asset staleness override changes
-    ///         (including being cleared back to the global default at 0).
-    event AssetMaxPriceAgeUpdated(address indexed asset, uint40 oldValue, uint40 newValue);
-    event AnchorWindowUpdated(uint256 oldValue, uint256 newValue);
-    event AdminPriceForced(address indexed asset, uint128 price);
-    event AssetPaused(address indexed asset);
-    event AssetUnpaused(address indexed asset);
-    /// @notice Emitted on the keeper-push path whenever the rolling anchor is
-    ///         rotated by the cumulative-drift guard. `newAnchor` is the value
-    ///         the next push will be measured against. Off-chain monitoring
-    ///         should subscribe to this event to detect anchor resets.
-    event AnchorRotated(address indexed asset, uint128 oldAnchor, uint128 newAnchor, uint40 timestamp);
-
-    // ── Views ───────────────────────────────────────────────────────────
-
-    /// @notice Returns the stored price (18 decimals). Reverts if uninitialized, paused, or stale.
-    function getPrice(address asset) external view returns (int256);
-
-    /// @notice Returns the full config for an asset.
-    function getAssetConfig(address asset) external view returns (AssetConfig memory);
-
-    /// @notice Seconds before a stored price is considered stale. 0 disables.
-    function maxPriceAge() external view returns (uint256);
-
-    /// @notice Rolling window (seconds) for the cumulative deviation anchor.
-    function anchorWindow() external view returns (uint256);
-
-    function admin() external view returns (address);
-    function pendingAdmin() external view returns (address);
-    function keeper() external view returns (address);
-
-    // ── Keeper ──────────────────────────────────────────────────────────
-
-    /// @notice Push a batch of 18-decimal prices. Each price is subject to two
-    ///         guards: the per-push circuit breaker and the cumulative drift cap.
-    /// @dev    Behavioral notes for auditors and integrators:
-    ///
-    ///         1. Duplicate assets within a single batch ARE permitted. The
-    ///            implementation processes the array in order, so the second
-    ///            (and subsequent) entries for the same asset are validated
-    ///            against the price written by the previous entry. The
-    ///            cumulative drift guard (which is mandatory — see
-    ///            `configureAssets`) bounds the total movement across the
-    ///            batch. Reordering by the keeper does not increase risk
-    ///            beyond what the guards already enforce.
-    ///
-    ///         2. AUTO-UNPAUSE: a paused asset that has been re-seeded via
-    ///            `adminSetPrice` will silently un-pause on the next keeper
-    ///            push that passes both guards. This is by design — pause is
-    ///            a transient state and the admin's reseed is the explicit
-    ///            "ready to resume" signal. There is no separate
-    ///            `adminResume`; pausing and resuming are split between
-    ///            `pauseAssets`/`adminSetPrice` respectively.
-    ///
-    ///         3. Reverts (non-exhaustive): empty arrays, length mismatch,
-    ///            zero price, unconfigured asset, paused-and-unseeded asset
-    ///            (`AssetIsPaused`), unconfigured-and-unseeded asset
-    ///            (`PriceNotInitialized`), per-push breaker, cumulative cap.
+    /// @notice Push prices. Role `K_PRICE`. Reverts for a paused asset. See CONTRACT_SPEC.md 3.1 for the rules.
     function keeperPushPrices(address[] calldata assets, uint128[] calldata prices) external;
 
-    /// @notice Pause one or more assets. Zeros all price state for each, so
-    ///         the next keeper push will revert until admin re-seeds via
-    ///         `adminSetPrice`. Callable by keeper or admin.
-    /// @dev    There is intentionally no `adminUnpause` counterpart: recovery
-    ///         is a two-step admin-then-keeper handshake. Admin re-seeds via
-    ///         `adminSetPrice`, then the keeper's next valid push auto-unpauses
-    ///         the asset. This guarantees that an unpaused asset is always
-    ///         backed by a price that has passed the keeper-side guards
-    ///         (circuit breaker + cumulative cap) rather than just an admin
-    ///         force-write. See audit L-02 for the operational trade-off
-    ///         (recovery requires keeper cooperation, by design).
+    /// @notice Same logic through the same internal function, in the packed format: 14 bytes per entry,
+    /// `uint16 id | uint96 price`, big-endian, no length prefix (`abi.encodePacked(uint16, uint96)`).
+    /// Role `K_PRICE`.
+    function keeperPushPacked(bytes calldata data) external;
+
+    /// @notice Pause assets, keeping `lastPrice`. Roles `K_PRICE` or `MS_OPS`.
     function pauseAssets(address[] calldata assets) external;
 
-    // ── Admin ───────────────────────────────────────────────────────────
+    // -- Confirmation (K_CONFIRM) ---------------------------------------------------------------
 
-    function configureAssets(
-        address[] calldata assets,
-        uint16[] calldata circuitBreakerThresholds,
-        uint16[] calldata cumulativeDeviationCaps
-    ) external;
+    /// @notice Promote the pending price to live. Role `K_CONFIRM`. Requires the asset not paused,
+    /// `pendingCount > 0`, `price == pendingPrice` and `now - pendingTs <= maxPriceAge`.
+    function confirm(address asset, uint128 price) external;
 
-    function setAssetThresholds(address asset, uint16 circuitBreakerThreshold, uint16 cumulativeDeviationCap) external;
+    /// @notice `confirm` for each entry, all-or-nothing. Role `K_CONFIRM`.
+    function confirmBatch(address[] calldata assets, uint128[] calldata prices) external;
 
-    /// @notice Force-set the stored price for an asset.
-    /// @dev    This is an UNCHECKED admin primitive. It deliberately bypasses
-    ///         both the per-push circuit breaker and the cumulative drift cap,
-    ///         and resets the rolling anchor (both `anchorPrice` and
-    ///         `anchorTimestamp`) to the new value. It also has no upper
-    ///         sanity bound on `price` — admin may write any non-zero
-    ///         uint128. This is the intended recovery primitive used to (a)
-    ///         seed a freshly-configured asset, (b) recover a paused asset,
-    ///         or (c) force a re-base after an incident that would
-    ///         legitimately trip the guards. Misuse is contained by the same
-    ///         trust model as every other `onlyAdmin` setter.
-    function adminSetPrice(address asset, uint128 price) external;
+    // -- Ops (MS_OPS) ---------------------------------------------------------------------------
 
-    /// @notice Update the GLOBAL staleness window applied by `getPrice` for
-    ///         any asset that does not have a per-asset override.
-    /// @dev    Passing `0` is an INTENTIONAL opt-out: when both the per-asset
-    ///         override and the global value are `0`, `getPrice` skips the
-    ///         staleness check entirely and will return arbitrarily old
-    ///         prices. This is reserved for incident response (e.g. keeper
-    ///         offline) and should not be the steady-state configuration.
-    ///         Admins are expected to restore a non-zero value once normal
-    ///         operation resumes.
-    function setMaxPriceAge(uint256 newMaxPriceAge) external;
+    /// @notice Add-only listing of underlying tokens (never wrappers). Assigns ids, reads `decimals()` (<= 18).
+    /// Role `MS_OPS`.
+    function listAssets(address[] calldata tokens, PriceClass[] calldata classes) external;
 
-    /// @notice Override the staleness window for a specific asset.
-    /// @dev    Tokenised equities trade on different schedules and have
-    ///         different liquidity profiles. The per-asset override lets the
-    ///         admin tighten the freshness guarantee on liquid names while
-    ///         keeping a looser window on assets with legitimate update gaps.
-    ///         Passing `0` clears the override and reinstates the global
-    ///         `maxPriceAge`. The asset must already be configured.
-    function setAssetMaxPriceAge(address asset, uint40 newMaxPriceAge) external;
+    /// @notice Clear `paused`. Role `MS_OPS`.
+    function unpauseAssets(address[] calldata assets) external;
 
-    /// @notice Update the rolling-anchor window used by the cumulative drift guard.
-    /// @dev    Passing `0` is an INTENTIONAL opt-out: when `anchorWindow == 0`
-    ///         the anchor never rotates and the cumulative cap is measured
-    ///         against the originally-seeded price until admin re-seeds via
-    ///         `adminSetPrice`. Use sparingly; this freezes the cumulative
-    ///         reference for the lifetime of the seed.
-    function setAnchorWindow(uint256 newAnchorWindow) external;
-    function setKeeper(address newKeeper) external;
-    function transferAdmin(address newAdmin) external;
+    // -- Risk params (MS_OPS, instant) ----------------------------------------------------------
+    // Risk params carry no timelock (like steward overrides and cap ceilings); only the hard bounds below
+    // apply. Role holders stay with `DEFAULT_ADMIN_ROLE` (timelock).
 
-    /// @notice Accept a pending admin transfer. Must be called by the address
-    ///         set via `transferAdmin`.
-    /// @dev    Reverts with `NoPendingAdmin` when no transfer is in flight
-    ///         (`pendingAdmin == address(0)`), and `NotPendingAdmin` when a
-    ///         transfer is in flight but the caller is not the pending admin.
-    function acceptAdmin() external;
+    function setAssetClass(address asset, PriceClass priceClass) external;
+    /// @dev Reverts `InvalidParam` if `newHaircutBps > 10_000`.
+    function setClassHaircut(PriceClass priceClass, uint16 newHaircutBps) external;
+    /// @dev Reverts `InvalidParam` if zero.
+    function setMaxPriceAge(uint40 newMaxPriceAge) external;
+    /// @dev Reverts `InvalidParam` if `newN < 2`.
+    function setN(uint8 newN) external;
+    /// @dev Reverts `InvalidParam` if zero.
+    function setMinPendingSpacing(uint40 newMinPendingSpacing) external;
+
+    // -- Views ----------------------------------------------------------------------------------
+
+    /// @notice Derived price state. Reverts `AssetNotListed`.
+    function state(address asset) external view returns (PriceState);
+
+    function getAssetData(address asset) external view returns (AssetData memory);
+
+    /// @notice State, `L`, `P`, `h` and decimals in one call. Used by the adapter and the escrow hook.
+    /// Reverts `AssetNotListed`.
+    function getQuoteData(address asset) external view returns (QuoteData memory);
+
+    /// @notice Batch views for monitoring.
+    function getStates(address[] calldata assets) external view returns (PriceState[] memory);
+    function getQuoteDataBatch(address[] calldata assets) external view returns (QuoteData[] memory);
+
+    function isListed(address asset) external view returns (bool);
+    function assetId(address asset) external view returns (uint16);
+    function assetById(uint16 id) external view returns (address);
+    function assetCount() external view returns (uint256);
+
+    function maxPriceAge() external view returns (uint40);
+    function n() external view returns (uint8);
+    function minPendingSpacing() external view returns (uint40);
+    function haircutBps(PriceClass priceClass) external view returns (uint16);
 }

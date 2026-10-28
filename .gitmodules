@@ -4,3 +4,18 @@
 [submodule "lib/openzeppelin-contracts"]
 	path = lib/openzeppelin-contracts
 	url = https://github.com/OpenZeppelin/openzeppelin-contracts
+[submodule "lib/ethereum-vault-connector"]
+	path = lib/ethereum-vault-connector
+	url = https://github.com/euler-xyz/ethereum-vault-connector
+[submodule "lib/euler-vault-kit"]
+	path = lib/euler-vault-kit
+	url = https://github.com/euler-xyz/euler-vault-kit
+[submodule "lib/euler-price-oracle"]
+	path = lib/euler-price-oracle
+	url = https://github.com/euler-xyz/euler-price-oracle
+[submodule "lib/euler-earn"]
+	path = lib/euler-earn
+	url = https://github.com/euler-xyz/euler-earn
+[submodule "lib/evk-periphery"]
+	path = lib/evk-periphery
+	url = https://github.com/euler-xyz/evk-periphery
