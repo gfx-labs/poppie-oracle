@@ -1,16 +1,17 @@
 name: CI
 
-# Runs on every PR to main and on pushes to main.
-# Under auto-merge-on-green, the jobs below ARE the code review. Every job here
-# should be a REQUIRED check in branch protection, or it isn't a gate.
-# (Required: Format check, Build, Tests (local), Slither.
-#  NOT required: Tests (fork) — advisory, see below.)
+# Runs on every PR targeting `scale` and on pushes to `scale`.
+# This workflow is verification only. It never merges, approves, or pushes
+# anything, and it deliberately does not run for `main`; merging is a manual,
+# human decision.
+# Gating jobs: Format check, Build, Tests (local), Slither.
+# Advisory only: Tests (fork) — see below.
 
 on:
   pull_request:
-    branches: [main]
+    branches: [scale]
   push:
-    branches: [main, scale]
+    branches: [scale]
   workflow_dispatch:
 
 env:
@@ -21,7 +22,7 @@ permissions:
   contents: read
 
 # Cancel superseded runs on the same PR to save CI minutes / RPC calls.
-# Never cancel runs on main — every merge commit should get a full result.
+# Never cancel push runs — every commit on `scale` should get a full result.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -61,7 +62,8 @@ jobs:
 
   # ----------------------------------------------------------------------------
   # 3. Tests — the full local suite (unit, fuzz, invariant). Does NOT run fork
-  #    tests; those are isolated below so a flaky free-tier RPC can't block merge.
+  #    tests; those are isolated below so a flaky free-tier RPC can't fail the
+  #    gating jobs.
   # ----------------------------------------------------------------------------
   test:
     name: Tests (local)
@@ -111,8 +113,8 @@ jobs:
   # ----------------------------------------------------------------------------
   # 5. Fork tests — SEPARATE and NON-BLOCKING by default.
   #    These need an RPC key (free-tier Alchemy), which rate-limits and causes
-  #    false failures. Kept out of the required set so a flaky RPC doesn't block
-  #    auto-merge. Make it required ONLY once you have a reliable CI RPC.
+  #    false failures. Kept advisory so a flaky RPC doesn't turn the run red.
+  #    Make it gating ONLY once you have a reliable CI RPC.
   #    Requires repo secret: ALCHEMY_API_KEY
   #    Read-only: fork tests execute against a local in-memory fork; nothing is
   #    ever broadcast to a live network.
