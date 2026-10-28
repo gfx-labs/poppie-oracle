@@ -20,17 +20,17 @@ interface IERC20 {
 /// hardware signer, or KMS rather than `DEPLOYER_KEY`.
 contract ConfigureDev is Script {
     // dev deployments (post-audit redeploy)
-    address constant ORACLE  = 0xAE83F1A1Ea8a4e7CbcaC3551B88E22Baea25f26D;
+    address constant ORACLE = 0xAE83F1A1Ea8a4e7CbcaC3551B88E22Baea25f26D;
     address constant ADAPTER = 0x92dad5eEE3245c2aD9766225Ff15beDf650646ea;
 
     // circuit breaker tiers (bps)
-    uint256 constant CB_DEFAULT  = 5000;  // 50% — single stocks
-    uint256 constant CB_ETF      = 3000;  // 30% — ETFs (SPY, QQQ)
-    uint256 constant CB_LEVERAGE = 7500;  // 75% — leveraged/volatile (TQQQ, SQQQ, MSTR, RKLB)
+    uint256 constant CB_DEFAULT = 5000; // 50% — single stocks
+    uint256 constant CB_ETF = 3000; // 30% — ETFs (SPY, QQQ)
+    uint256 constant CB_LEVERAGE = 7500; // 75% — leveraged/volatile (TQQQ, SQQQ, MSTR, RKLB)
 
     // cumulative deviation cap — same as CB for simplicity in dev
-    uint256 constant CUM_DEFAULT  = 5000;
-    uint256 constant CUM_ETF      = 3000;
+    uint256 constant CUM_DEFAULT = 5000;
+    uint256 constant CUM_ETF = 3000;
     uint256 constant CUM_LEVERAGE = 7500;
 
     function run() external {
@@ -65,44 +65,64 @@ contract ConfigureDev is Script {
             0xfBD4D681C92ead6Af0E49950c8B2e47EeAcbB2dB, // QCOMon
             0xb4D695569236273745B4CD54B539b1b9Cc1513af, // RKLBon
             0xd5964f3fcee8D649995AB88F04b8982539c282D2, // BABAon
-            0x17515B68378d86C38F394c666e79907dA05dcBA9  // SQQQon
+            0x17515B68378d86C38F394c666e79907dA05dcBA9 // SQQQon
         ];
 
         // match thresholds to the production BSC deployment tiers
         uint256[25] memory cb = [
-            CB_DEFAULT,  // NVDAon
-            CB_DEFAULT,  // TSLAon
-            CB_DEFAULT,  // GOOGLon
-            CB_DEFAULT,  // CRCLon
-            CB_ETF,      // QQQon
-            CB_DEFAULT,  // MSFTon
-            CB_DEFAULT,  // INTCon
-            CB_DEFAULT,  // MUon
-            CB_DEFAULT,  // AAPLon
-            CB_ETF,      // SPYon
-            CB_DEFAULT,  // AMZNon
-            CB_DEFAULT,  // SNDKon
-            CB_DEFAULT,  // METAon
-            CB_DEFAULT,  // AMDon
-            CB_DEFAULT,  // COINon
-            CB_DEFAULT,  // NFLXon
+            CB_DEFAULT, // NVDAon
+            CB_DEFAULT, // TSLAon
+            CB_DEFAULT, // GOOGLon
+            CB_DEFAULT, // CRCLon
+            CB_ETF, // QQQon
+            CB_DEFAULT, // MSFTon
+            CB_DEFAULT, // INTCon
+            CB_DEFAULT, // MUon
+            CB_DEFAULT, // AAPLon
+            CB_ETF, // SPYon
+            CB_DEFAULT, // AMZNon
+            CB_DEFAULT, // SNDKon
+            CB_DEFAULT, // METAon
+            CB_DEFAULT, // AMDon
+            CB_DEFAULT, // COINon
+            CB_DEFAULT, // NFLXon
             CB_LEVERAGE, // TQQQon
             CB_LEVERAGE, // MSTRon
-            CB_DEFAULT,  // TSMon
-            CB_DEFAULT,  // ORCLon
-            CB_DEFAULT,  // MRVLon
-            CB_DEFAULT,  // QCOMon
+            CB_DEFAULT, // TSMon
+            CB_DEFAULT, // ORCLon
+            CB_DEFAULT, // MRVLon
+            CB_DEFAULT, // QCOMon
             CB_LEVERAGE, // RKLBon
-            CB_DEFAULT,  // BABAon
-            CB_LEVERAGE  // SQQQon
+            CB_DEFAULT, // BABAon
+            CB_LEVERAGE // SQQQon
         ];
 
         uint256[25] memory cumCap = [
-            CUM_DEFAULT,  CUM_DEFAULT,  CUM_DEFAULT,  CUM_DEFAULT,  CUM_ETF,
-            CUM_DEFAULT,  CUM_DEFAULT,  CUM_DEFAULT,  CUM_DEFAULT,  CUM_ETF,
-            CUM_DEFAULT,  CUM_DEFAULT,  CUM_DEFAULT,  CUM_DEFAULT,  CUM_DEFAULT,
-            CUM_DEFAULT,  CUM_LEVERAGE, CUM_LEVERAGE, CUM_DEFAULT,  CUM_DEFAULT,
-            CUM_DEFAULT,  CUM_DEFAULT,  CUM_LEVERAGE, CUM_DEFAULT,  CUM_LEVERAGE
+            CUM_DEFAULT,
+            CUM_DEFAULT,
+            CUM_DEFAULT,
+            CUM_DEFAULT,
+            CUM_ETF,
+            CUM_DEFAULT,
+            CUM_DEFAULT,
+            CUM_DEFAULT,
+            CUM_DEFAULT,
+            CUM_ETF,
+            CUM_DEFAULT,
+            CUM_DEFAULT,
+            CUM_DEFAULT,
+            CUM_DEFAULT,
+            CUM_DEFAULT,
+            CUM_DEFAULT,
+            CUM_LEVERAGE,
+            CUM_LEVERAGE,
+            CUM_DEFAULT,
+            CUM_DEFAULT,
+            CUM_DEFAULT,
+            CUM_DEFAULT,
+            CUM_LEVERAGE,
+            CUM_DEFAULT,
+            CUM_LEVERAGE
         ];
 
         // convert fixed arrays to dynamic for the contract call

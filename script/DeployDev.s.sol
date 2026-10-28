@@ -34,8 +34,8 @@ contract DeployDev is Script {
     uint8 constant UNIT_DECIMALS = 18;
 
     // oracle params
-    uint256 constant MAX_PRICE_AGE = 3600;   // 1 hour
-    uint256 constant ANCHOR_WINDOW = 86400;  // 24 hours
+    uint256 constant MAX_PRICE_AGE = 3600; // 1 hour
+    uint256 constant ANCHOR_WINDOW = 86400; // 24 hours
 
     function run() external {
         address admin = vm.envAddress("ADMIN");
@@ -49,21 +49,11 @@ contract DeployDev is Script {
         vm.startBroadcast(deployerKey);
 
         // deploy oracle
-        PoppieEulerOracle oracle = new PoppieEulerOracle(
-            admin,
-            keeper,
-            MAX_PRICE_AGE,
-            ANCHOR_WINDOW
-        );
+        PoppieEulerOracle oracle = new PoppieEulerOracle(admin, keeper, MAX_PRICE_AGE, ANCHOR_WINDOW);
         console.log("PoppieEulerOracle:", address(oracle));
 
         // deploy adapter pointing at the oracle
-        PoppieEulerAdapter adapter = new PoppieEulerAdapter(
-            address(oracle),
-            admin,
-            UNIT_OF_ACCOUNT,
-            UNIT_DECIMALS
-        );
+        PoppieEulerAdapter adapter = new PoppieEulerAdapter(address(oracle), admin, UNIT_OF_ACCOUNT, UNIT_DECIMALS);
         console.log("PoppieEulerAdapter:", address(adapter));
 
         vm.stopBroadcast();

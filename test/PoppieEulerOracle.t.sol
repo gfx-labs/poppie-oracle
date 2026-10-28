@@ -195,7 +195,9 @@ contract PoppieEulerOracleTest is Test {
         uint128[] memory p = new uint128[](1);
         p[0] = 160e18; // +60%, exceeds 50%
         vm.prank(keeper);
-        vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.CircuitBreakerTriggered.selector, address(token), 6000, CB));
+        vm.expectRevert(
+            abi.encodeWithSelector(IPoppieEulerOracle.CircuitBreakerTriggered.selector, address(token), 6000, CB)
+        );
         oracle.keeperPushPrices(_arr(address(token)), p);
     }
 
@@ -728,7 +730,7 @@ contract PoppieEulerOracleTest is Test {
         // modest continuation move was measured as an outsized deviation
         // against the trapped anchor. Post-fix the anchor rotates to the
         // current push, so a small continuation move stays in-band.
-        _push(80e18);   // down 20% from seed 100; anchor unchanged at 100
+        _push(80e18); // down 20% from seed 100; anchor unchanged at 100
         vm.warp(block.timestamp + 86401);
         // Pre-fix this push would rotate the anchor to 80, and a subsequent
         // 60→50 (17%) push would be measured against 80 (50→80 = 37.5%).

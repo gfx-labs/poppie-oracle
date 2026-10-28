@@ -88,7 +88,9 @@ contract PoppieEulerAdapter is IPriceOracle {
     event AdminTransferred(address indexed oldAdmin, address indexed newAdmin);
     event BaseRegistered(address indexed base, uint8 decimals);
     event BaseUnregistered(address indexed base);
-    event AdapterDeployed(address indexed master, address indexed unitOfAccount, uint8 unitOfAccountDecimals, address admin);
+    event AdapterDeployed(
+        address indexed master, address indexed unitOfAccount, uint8 unitOfAccountDecimals, address admin
+    );
 
     modifier onlyAdmin() {
         if (msg.sender != admin) revert OnlyAdmin();
@@ -219,13 +221,23 @@ contract PoppieEulerAdapter is IPriceOracle {
     // ── Pricing ─────────────────────────────────────────────────────────
 
     /// @inheritdoc IPriceOracle
-    function getQuote(uint256 inAmount, address base, address quote) external view override returns (uint256 outAmount) {
+    function getQuote(uint256 inAmount, address base, address quote)
+        external
+        view
+        override
+        returns (uint256 outAmount)
+    {
         if (quote != unitOfAccount) revert UnsupportedQuote(quote);
         outAmount = _computeQuote(inAmount, base);
     }
 
     /// @inheritdoc IPriceOracle
-    function getQuotes(uint256 inAmount, address base, address quote) external view override returns (uint256 bidOutAmount, uint256 askOutAmount) {
+    function getQuotes(uint256 inAmount, address base, address quote)
+        external
+        view
+        override
+        returns (uint256 bidOutAmount, uint256 askOutAmount)
+    {
         if (quote != unitOfAccount) revert UnsupportedQuote(quote);
         uint256 amount = _computeQuote(inAmount, base);
         bidOutAmount = amount;

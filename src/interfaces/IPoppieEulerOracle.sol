@@ -18,19 +18,19 @@ interface IPoppieEulerOracle {
     ///      applies. A uint40 fits 34,000+ years which is well beyond any
     ///      sensible staleness window.
     struct AssetConfig {
-        bool configured;                    // 1 byte
-        bool paused;                        // 1 byte
-        uint16 circuitBreakerThreshold;     // bps; max 10000; 0 disables
-        uint16 cumulativeDeviationCap;      // bps; max 10000; 0 disables
-        uint40 lastPriceTimestamp;          // unix seconds
-        uint40 anchorTimestamp;             // unix seconds
-        uint128 lastPrice;                  // 18 decimals; 0 = unseeded
-                                            // (fresh-configured, or freshly-paused;
-                                            // admin must call `adminSetPrice`
-                                            // before keeper can push)
+        bool configured; // 1 byte
+        bool paused; // 1 byte
+        uint16 circuitBreakerThreshold; // bps; max 10000; 0 disables
+        uint16 cumulativeDeviationCap; // bps; max 10000; 0 disables
+        uint40 lastPriceTimestamp; // unix seconds
+        uint40 anchorTimestamp; // unix seconds
+        uint128 lastPrice; // 18 decimals; 0 = unseeded
+        // (fresh-configured, or freshly-paused;
+        // admin must call `adminSetPrice`
+        // before keeper can push)
         // --- slot boundary ---
-        uint128 anchorPrice;                // 18 decimals; cumulative check reference
-        uint40 maxPriceAge;                 // 0 = inherit global; non-zero = per-asset override
+        uint128 anchorPrice; // 18 decimals; cumulative check reference
+        uint40 maxPriceAge; // 0 = inherit global; non-zero = per-asset override
     }
 
     // ── Errors ──────────────────────────────────────────────────────────

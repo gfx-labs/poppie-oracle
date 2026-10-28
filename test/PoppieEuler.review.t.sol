@@ -28,22 +28,13 @@ contract PoppieEulerReviewTest is Test {
         r[0] = x;
     }
 
-    function _configureAndRegister(
-        PoppieEulerAdapter adapter,
-        MockERC20 t,
-        uint16 cb,
-        uint128 price
-    ) internal {
+    function _configureAndRegister(PoppieEulerAdapter adapter, MockERC20 t, uint16 cb, uint128 price) internal {
         _configureAndRegister(adapter, t, cb, cb, price);
     }
 
-    function _configureAndRegister(
-        PoppieEulerAdapter adapter,
-        MockERC20 t,
-        uint16 cb,
-        uint16 cap,
-        uint128 price
-    ) internal {
+    function _configureAndRegister(PoppieEulerAdapter adapter, MockERC20 t, uint16 cb, uint16 cap, uint128 price)
+        internal
+    {
         // configureAssets now requires a non-zero cumulative cap; coerce zero
         // values to the max so callers that previously passed cap=0 to "disable"
         // the guard still exercise an effectively-permissive configuration.
@@ -69,8 +60,7 @@ contract PoppieEulerReviewTest is Test {
     // ---------------------------------------------------------------------
 
     function test_getQuote_unitDecimals6() public {
-        PoppieEulerAdapter adapter =
-            new PoppieEulerAdapter(address(oracle), aAdmin, UNIT, 6);
+        PoppieEulerAdapter adapter = new PoppieEulerAdapter(address(oracle), aAdmin, UNIT, 6);
         MockERC20 t = new MockERC20("AAPLon", "AAPLon", 18);
         _configureAndRegister(adapter, t, 0, 175.23e18);
 
@@ -82,8 +72,7 @@ contract PoppieEulerReviewTest is Test {
     }
 
     function test_getQuote_unitDecimals8_baseDecimals6() public {
-        PoppieEulerAdapter adapter =
-            new PoppieEulerAdapter(address(oracle), aAdmin, UNIT, 8);
+        PoppieEulerAdapter adapter = new PoppieEulerAdapter(address(oracle), aAdmin, UNIT, 8);
         MockERC20 t = new MockERC20("USDCon", "USDCon", 6);
         _configureAndRegister(adapter, t, 0, 1e18); // $1
 
@@ -102,8 +91,7 @@ contract PoppieEulerReviewTest is Test {
         uint128 price18 = uint128(bound(priceRaw, 1e14, 1e25));
         inAmount = bound(inAmount, 0, 1e12 * (10 ** uint256(baseDec)));
 
-        PoppieEulerAdapter adapter =
-            new PoppieEulerAdapter(address(oracle), aAdmin, UNIT, uoaDec);
+        PoppieEulerAdapter adapter = new PoppieEulerAdapter(address(oracle), aAdmin, UNIT, uoaDec);
         MockERC20 t = new MockERC20("F", "F", baseDec);
         _configureAndRegister(adapter, t, 0, price18);
 
@@ -119,8 +107,7 @@ contract PoppieEulerReviewTest is Test {
     // ---------------------------------------------------------------------
 
     function test_circuitBreaker_cumulativeDriftIsBlocked() public {
-        PoppieEulerAdapter adapter =
-            new PoppieEulerAdapter(address(oracle), aAdmin, UNIT, 18);
+        PoppieEulerAdapter adapter = new PoppieEulerAdapter(address(oracle), aAdmin, UNIT, 18);
         MockERC20 t = new MockERC20("AAPLon", "AAPLon", 18);
         _configureAndRegister(adapter, t, 5000, 100e18); // 50% per-step, 50% cumulative cap
 
@@ -142,8 +129,7 @@ contract PoppieEulerReviewTest is Test {
     }
 
     function test_circuitBreaker_cumulativeDriftResetsAfterWindow() public {
-        PoppieEulerAdapter adapter =
-            new PoppieEulerAdapter(address(oracle), aAdmin, UNIT, 18);
+        PoppieEulerAdapter adapter = new PoppieEulerAdapter(address(oracle), aAdmin, UNIT, 18);
         MockERC20 t = new MockERC20("AAPLon", "AAPLon", 18);
         _configureAndRegister(adapter, t, 5000, 5000, 100e18); // explicit 50%/50%
 
@@ -198,8 +184,7 @@ contract PoppieEulerReviewTest is Test {
     // ---------------------------------------------------------------------
 
     function test_unregisterBase_neverRegistered_reverts() public {
-        PoppieEulerAdapter adapter =
-            new PoppieEulerAdapter(address(oracle), aAdmin, UNIT, 18);
+        PoppieEulerAdapter adapter = new PoppieEulerAdapter(address(oracle), aAdmin, UNIT, 18);
         MockERC20 t = new MockERC20("X", "X", 18);
         (bool regBefore,) = adapter.getBaseInfo(address(t));
         assertFalse(regBefore);

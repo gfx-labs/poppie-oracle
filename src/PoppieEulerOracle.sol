@@ -74,10 +74,7 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
     // ── Keeper ──────────────────────────────────────────────────────────
 
     /// @inheritdoc IPoppieEulerOracle
-    function keeperPushPrices(
-        address[] calldata assets,
-        uint128[] calldata prices
-    ) external override onlyKeeper {
+    function keeperPushPrices(address[] calldata assets, uint128[] calldata prices) external override onlyKeeper {
         if (assets.length == 0) revert LengthMismatch();
         if (assets.length != prices.length) revert LengthMismatch();
         uint40 ts = uint40(block.timestamp);
@@ -170,14 +167,18 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
                 anchorTimestamp: 0,
                 lastPrice: 0,
                 anchorPrice: 0,
-                maxPriceAge: 0  // inherit global by default; override via setAssetMaxPriceAge
+                maxPriceAge: 0 // inherit global by default; override via setAssetMaxPriceAge
             });
             emit AssetConfigured(assets[i], circuitBreakerThresholds[i], cumulativeDeviationCaps[i]);
         }
     }
 
     /// @inheritdoc IPoppieEulerOracle
-    function setAssetThresholds(address asset, uint16 circuitBreakerThreshold, uint16 cumulativeDeviationCap) external override onlyAdmin {
+    function setAssetThresholds(address asset, uint16 circuitBreakerThreshold, uint16 cumulativeDeviationCap)
+        external
+        override
+        onlyAdmin
+    {
         if (!_assetConfigs[asset].configured) revert AssetNotConfigured(asset);
         // mirror the configureAssets invariants: cumulative cap must remain
         // non-zero, and both bps values must be <= 10000.
@@ -304,9 +305,7 @@ contract PoppieEulerOracle is IPoppieEulerOracle {
     ///      short-circuits when `anchorPrice == 0`. No runtime check is added
     ///      here so this helper stays branch-free on the hot path.
     function _deviationBps(uint128 a, uint128 b) internal pure returns (uint256) {
-        uint256 diff = a >= b
-            ? uint256(a - b)
-            : uint256(b - a);
+        uint256 diff = a >= b ? uint256(a - b) : uint256(b - a);
         return diff * BPS_DENOMINATOR / uint256(b);
     }
 }

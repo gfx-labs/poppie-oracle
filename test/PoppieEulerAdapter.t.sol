@@ -26,10 +26,7 @@ contract PoppieEulerAdapterTest is Test {
     uint16 constant CB = 5000;
 
     event AdapterDeployed(
-        address indexed master,
-        address indexed unitOfAccount,
-        uint8 unitOfAccountDecimals,
-        address admin
+        address indexed master, address indexed unitOfAccount, uint8 unitOfAccountDecimals, address admin
     );
 
     function setUp() public {
@@ -42,8 +39,12 @@ contract PoppieEulerAdapterTest is Test {
 
         address[] memory a = new address[](3);
         uint16[] memory t = new uint16[](3);
-        a[0] = address(token18); a[1] = address(token6); a[2] = address(token8);
-        t[0] = CB; t[1] = CB; t[2] = CB;
+        a[0] = address(token18);
+        a[1] = address(token6);
+        a[2] = address(token8);
+        t[0] = CB;
+        t[1] = CB;
+        t[2] = CB;
         vm.prank(admin);
         oracle.configureAssets(a, t, t);
 
@@ -234,11 +235,7 @@ contract PoppieEulerAdapterTest is Test {
 
     // --- Fuzz: conversion matches reference, realistic decimal range ---
 
-    function testFuzz_getQuote_matchesReference(
-        uint8 baseDec,
-        uint256 inAmount,
-        uint256 priceRaw
-    ) public {
+    function testFuzz_getQuote_matchesReference(uint8 baseDec, uint256 inAmount, uint256 priceRaw) public {
         baseDec = uint8(bound(baseDec, 0, 18));
         uint128 price18 = uint128(bound(priceRaw, 1e14, 1e25));
         inAmount = bound(inAmount, 0, 1e12 * (10 ** uint256(baseDec)));
@@ -402,5 +399,7 @@ contract PoppieEulerAdapterTest is Test {
 ///      adapter's decimals() probe lands in the catch branch.
 contract NoDecimalsToken {
     // explicit revert fallback so even a bare call reverts loudly.
-    fallback() external { revert(); }
+    fallback() external {
+        revert();
+    }
 }
