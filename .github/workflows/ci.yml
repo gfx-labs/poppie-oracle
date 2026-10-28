@@ -38,9 +38,7 @@ jobs:
         with:
           submodules: recursive
       - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
-        with:
-          version: stable
+        uses: ./.github/actions/setup-foundry
       - run: forge --version
       - name: Check formatting
         run: forge fmt --check
@@ -57,9 +55,7 @@ jobs:
         with:
           submodules: recursive
       - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
-        with:
-          version: stable
+        uses: ./.github/actions/setup-foundry
       - name: Build
         run: forge build --sizes
 
@@ -76,9 +72,7 @@ jobs:
         with:
           submodules: recursive
       - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
-        with:
-          version: stable
+        uses: ./.github/actions/setup-foundry
       - name: Run tests (exclude fork tests)
         run: forge test -vvv --no-match-path "test/fork/**"
 
@@ -99,22 +93,20 @@ jobs:
         with:
           submodules: recursive
       - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
-        with:
-          version: stable
+        uses: ./.github/actions/setup-foundry
+      # crytic/slither-action is not on the org allow-list, so install Slither
+      # directly. Pinned to the version used for local triage. For Foundry
+      # projects crytic-compile drives `forge build`, which fetches solc itself.
+      - name: Install Slither
+        run: pip install --disable-pip-version-check slither-analyzer==0.11.6
       - name: Run Slither
-        uses: crytic/slither-action@v0.4.2
-        id: slither
-        with:
-          fail-on: medium
-          slither-config: slither.config.json
-          sarif: results.sarif
+        run: slither . --config-file slither.config.json --fail-medium --sarif results.sarif
       - name: Upload SARIF
         uses: github/codeql-action/upload-sarif@v3
         # Fork PRs get a read-only token and cannot upload code-scanning results.
-        if: always() && steps.slither.outputs.sarif != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        if: always() && hashFiles('results.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         with:
-          sarif_file: ${{ steps.slither.outputs.sarif }}
+          sarif_file: results.sarif
 
   # ----------------------------------------------------------------------------
   # 5. Fork tests — SEPARATE and NON-BLOCKING by default.
@@ -138,9 +130,7 @@ jobs:
         with:
           submodules: recursive
       - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
-        with:
-          version: stable
+        uses: ./.github/actions/setup-foundry
       - name: Run fork tests
         run: |
           if [ ! -d test/fork ]; then

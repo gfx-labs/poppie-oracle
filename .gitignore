@@ -12,3 +12,6 @@ broadcast/
 *.swp
 src/vendor/soljson-latest.js
 src/soljson-latest.js
+
+# Slither SARIF output
+results.sarif
