@@ -29,3 +29,16 @@ runs = 1000
 [profile.ci.invariant]
 runs = 256
 depth = 32
+
+# RPC aliases. ALCHEMY_API_KEY is a generic Alchemy key that works on any
+# Alchemy-supported chain, so each alias just swaps the network subdomain.
+# Use the alias (e.g. `--rpc-url arbitrum`, `--fork-url arbitrum`) so the
+# resolved URL, which embeds the key, is never typed or printed.
+# Values come from the environment / .env at runtime; never inline a key here.
+[rpc_endpoints]
+arbitrum = "https://arb-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}"
+mainnet = "https://eth-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}"
+
+# Block-explorer verification keys (read-only use here; no deploys from agents).
+[etherscan]
+arbitrum = { key = "${ARBISCAN_API_KEY}", chain = 42161 }

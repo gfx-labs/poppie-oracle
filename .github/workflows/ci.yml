@@ -151,5 +151,5 @@ jobs:
             echo "::warning::ALCHEMY_API_KEY secret is not set - skipping fork tests."
             exit 0
           fi
-          forge test -vvv --match-path "test/fork/**" \
-            --fork-url "https://arb-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}"
+          # `arbitrum` alias is defined in foundry.toml and resolves ALCHEMY_API_KEY.
+          forge test -vvv --match-path "test/fork/**" --fork-url arbitrum
