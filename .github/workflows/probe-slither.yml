@@ -1,0 +1,12 @@
+name: probe-slither
+on:
+  push:
+    branches: [scale]
+jobs:
+  p:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: crytic/slither-action@v0.4.2
+        with:
+          target: .
+          fail-on: none

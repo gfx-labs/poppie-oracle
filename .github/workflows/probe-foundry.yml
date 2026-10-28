@@ -1,0 +1,9 @@
+name: probe-foundry
+on:
+  push:
+    branches: [scale]
+jobs:
+  p:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: foundry-rs/foundry-toolchain@v1
