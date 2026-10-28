@@ -20,3 +20,12 @@ runs = 256
 [profile.default.invariant]
 runs = 256
 depth = 32
+
+# CI profile: inherits everything from [profile.default], with deeper fuzzing.
+# Fork tests (test/fork/**) are excluded via --no-match-path in the workflow.
+[profile.ci.fuzz]
+runs = 1000
+
+[profile.ci.invariant]
+runs = 256
+depth = 32

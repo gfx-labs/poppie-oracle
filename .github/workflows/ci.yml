@@ -1,0 +1,155 @@
+name: CI
+
+# Runs on every PR to main and on pushes to main.
+# Under auto-merge-on-green, the jobs below ARE the code review. Every job here
+# should be a REQUIRED check in branch protection, or it isn't a gate.
+# (Required: Format check, Build, Tests (local), Slither.
+#  NOT required: Tests (fork) — advisory, see below.)
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, scale]
+  workflow_dispatch:
+
+env:
+  FOUNDRY_PROFILE: ci
+
+# Read-only by default; individual jobs opt in to more.
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same PR to save CI minutes / RPC calls.
+# Never cancel runs on main — every merge commit should get a full result.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # ----------------------------------------------------------------------------
+  # 1. Format — fast fail. Cheap gate that catches unformatted code immediately.
+  # ----------------------------------------------------------------------------
+  fmt:
+    name: Format check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - run: forge --version
+      - name: Check formatting
+        run: forge fmt --check
+
+  # ----------------------------------------------------------------------------
+  # 2. Build — must compile, and report contract sizes (catches >24KB blowups).
+  # ----------------------------------------------------------------------------
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: fmt
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - name: Build
+        run: forge build --sizes
+
+  # ----------------------------------------------------------------------------
+  # 3. Tests — the full local suite (unit, fuzz, invariant). Does NOT run fork
+  #    tests; those are isolated below so a flaky free-tier RPC can't block merge.
+  # ----------------------------------------------------------------------------
+  test:
+    name: Tests (local)
+    runs-on: ubuntu-latest
+    needs: fmt
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - name: Run tests (exclude fork tests)
+        run: forge test -vvv --no-match-path "test/fork/**"
+
+  # ----------------------------------------------------------------------------
+  # 4. Static analysis — Slither. High-value when there is no human review.
+  #    Gated on medium+ severity. Tune slither.config.json to silence false
+  #    positives rather than lowering this bar.
+  # ----------------------------------------------------------------------------
+  slither:
+    name: Slither
+    runs-on: ubuntu-latest
+    needs: fmt
+    permissions:
+      contents: read
+      security-events: write # required to upload SARIF
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - name: Run Slither
+        uses: crytic/slither-action@v0.4.2
+        id: slither
+        with:
+          fail-on: medium
+          slither-config: slither.config.json
+          sarif: results.sarif
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        # Fork PRs get a read-only token and cannot upload code-scanning results.
+        if: always() && steps.slither.outputs.sarif != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        with:
+          sarif_file: ${{ steps.slither.outputs.sarif }}
+
+  # ----------------------------------------------------------------------------
+  # 5. Fork tests — SEPARATE and NON-BLOCKING by default.
+  #    These need an RPC key (free-tier Alchemy), which rate-limits and causes
+  #    false failures. Kept out of the required set so a flaky RPC doesn't block
+  #    auto-merge. Make it required ONLY once you have a reliable CI RPC.
+  #    Requires repo secret: ALCHEMY_API_KEY
+  #    Read-only: fork tests execute against a local in-memory fork; nothing is
+  #    ever broadcast to a live network.
+  #    Skips cleanly while test/fork/ does not exist or the secret is unset.
+  # ----------------------------------------------------------------------------
+  fork-test:
+    name: Tests (fork) [non-blocking]
+    runs-on: ubuntu-latest
+    needs: fmt
+    continue-on-error: true # advisory until you have a paid/dedicated CI RPC
+    env:
+      ALCHEMY_API_KEY: ${{ secrets.ALCHEMY_API_KEY }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - name: Run fork tests
+        run: |
+          if [ ! -d test/fork ]; then
+            echo "::notice::No test/fork directory yet - skipping fork tests."
+            exit 0
+          fi
+          if [ -z "$ALCHEMY_API_KEY" ]; then
+            echo "::warning::ALCHEMY_API_KEY secret is not set - skipping fork tests."
+            exit 0
+          fi
+          forge test -vvv --match-path "test/fork/**" \
+            --fork-url "https://arb-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}"
