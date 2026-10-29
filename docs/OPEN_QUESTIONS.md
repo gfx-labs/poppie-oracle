@@ -60,3 +60,4 @@ Raised while fixing the interfaces in `src/interfaces/`. All folded into `CONTRA
 ## Resolved
 
 - **Q12. PDF readability:** some agents can't read PDFs. Resolved by `docs/ARCHITECTURE.md` (Markdown conversion; newer than the PDF).
+
