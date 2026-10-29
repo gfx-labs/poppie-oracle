@@ -42,18 +42,33 @@ contract PoppieEulerOracleTest is OracleFixture {
 
     function test_listAssets_assignsSequentialIdsAndReadsDecimals() public view {
         assertEq(oracle.assetCount(), 3);
-        assertEq(oracle.assetId(address(tokenA)), 0);
-        assertEq(oracle.assetId(address(tokenB)), 1);
-        assertEq(oracle.assetId(address(tokenC)), 2);
-        assertEq(oracle.assetById(0), address(tokenA));
-        assertEq(oracle.assetById(2), address(tokenC));
+        assertEq(oracle.assetId(address(tokenA)), 1);
+        assertEq(oracle.assetId(address(tokenB)), 2);
+        assertEq(oracle.assetId(address(tokenC)), 3);
+        assertEq(oracle.assetById(1), address(tokenA));
+        assertEq(oracle.assetById(3), address(tokenC));
         assertTrue(oracle.isListed(address(tokenB)));
         IPoppieEulerOracle.AssetData memory d = _data(address(tokenB));
         assertEq(d.decimals, 6);
         assertEq(uint8(d.priceClass), uint8(IPoppieEulerOracle.PriceClass.M1));
         assertTrue(d.listed);
-        assertEq(d.id, 1);
+        assertEq(d.id, 2);
         assertEq(d.lastPrice, 0);
+    }
+
+    function test_constructor_rejectsZeroAdmin() public {
+        // Same `ZeroAddress()` selector from the shared error used by `PoppieAccessControl` and from the interface.
+        vm.expectRevert(abi.encodeWithSignature("ZeroAddress()"));
+        new PoppieEulerOracle(address(0));
+        assertEq(IPoppieEulerOracle.ZeroAddress.selector, bytes4(keccak256("ZeroAddress()")));
+    }
+
+    function test_assetIdsStartAtOneAndZeroIsInvalid() public {
+        assertEq(oracle.assetId(address(tokenA)), 1);
+        assertEq(oracle.assetCount(), 3); // count of listed tokens, equal to the last assigned id
+        assertEq(oracle.assetById(uint16(oracle.assetCount())), address(tokenC));
+        vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.UnknownAssetId.selector, 0));
+        oracle.assetById(0);
     }
 
     function test_listAssets_emitsEvent() public {
@@ -63,7 +78,7 @@ contract PoppieEulerOracleTest is OracleFixture {
         IPoppieEulerOracle.PriceClass[] memory cs = new IPoppieEulerOracle.PriceClass[](1);
         cs[0] = IPoppieEulerOracle.PriceClass.M2;
         vm.expectEmit(true, true, false, true, address(oracle));
-        emit IPoppieEulerOracle.AssetListed(address(t), 3, IPoppieEulerOracle.PriceClass.M2, 12);
+        emit IPoppieEulerOracle.AssetListed(address(t), 4, IPoppieEulerOracle.PriceClass.M2, 12);
         vm.prank(ops);
         oracle.listAssets(ts, cs);
     }
@@ -144,9 +159,10 @@ contract PoppieEulerOracleTest is OracleFixture {
     }
 
     function test_listAssets_tooManyAssets() public {
-        // `_tokens` is the fifth storage slot (roles, params, hot, pending, tokens): fake a full registry.
-        vm.store(address(oracle), bytes32(uint256(4)), bytes32(uint256(65_536)));
-        assertEq(oracle.assetCount(), 65_536);
+        // `_tokens` is the fifth storage slot (roles, params, hot, pending, tokens): fake a full registry. Ids
+        // 1..65_535 are assignable, so 65_535 listed tokens leave no id for another one.
+        vm.store(address(oracle), bytes32(uint256(4)), bytes32(uint256(65_535)));
+        assertEq(oracle.assetCount(), 65_535);
         MockERC20 t = new MockERC20("t", "t", 18);
         address[] memory ts = new address[](1);
         ts[0] = address(t);
@@ -157,7 +173,7 @@ contract PoppieEulerOracleTest is OracleFixture {
     }
 
     function test_listAssets_lastIdIsAllowed() public {
-        vm.store(address(oracle), bytes32(uint256(4)), bytes32(uint256(65_535)));
+        vm.store(address(oracle), bytes32(uint256(4)), bytes32(uint256(65_534)));
         MockERC20 t = new MockERC20("t", "t", 18);
         _list(address(t), IPoppieEulerOracle.PriceClass.M1);
         assertEq(oracle.assetId(address(t)), 65_535);
@@ -171,8 +187,10 @@ contract PoppieEulerOracleTest is OracleFixture {
         oracle.getQuoteData(x);
         vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.AssetNotListed.selector, x));
         oracle.assetId(x);
-        vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.UnknownAssetId.selector, 3));
-        oracle.assetById(3);
+        vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.UnknownAssetId.selector, 4));
+        oracle.assetById(4);
+        vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.UnknownAssetId.selector, 0));
+        oracle.assetById(0);
         assertFalse(oracle.isListed(x));
         assertFalse(oracle.getAssetData(x).listed);
     }
@@ -362,7 +380,7 @@ contract PoppieEulerOracleTest is OracleFixture {
         // Same through the packed format.
         bytes memory packed;
         for (uint256 i; i < 10; ++i) {
-            packed = bytes.concat(packed, PackedPrices.encode(0, uint96(_price(170 + i))));
+            packed = bytes.concat(packed, PackedPrices.encode(1, uint96(_price(170 + i))));
         }
         vm.prank(keeper);
         oracle.keeperPushPacked(packed);
@@ -588,17 +606,22 @@ contract PoppieEulerOracleTest is OracleFixture {
         oracle.keeperPushPacked(new bytes(13));
 
         vm.prank(keeper);
-        vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.UnknownAssetId.selector, 3));
-        oracle.keeperPushPacked(PackedPrices.encode(3, 1));
+        vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.UnknownAssetId.selector, 4));
+        oracle.keeperPushPacked(PackedPrices.encode(4, 1));
+
+        // Id 0 is never assigned.
+        vm.prank(keeper);
+        vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.UnknownAssetId.selector, 0));
+        oracle.keeperPushPacked(PackedPrices.encode(0, 1));
 
         vm.prank(keeper);
         vm.expectRevert(IPoppieEulerOracle.InvalidPrice.selector);
-        oracle.keeperPushPacked(PackedPrices.encode(0, 0));
+        oracle.keeperPushPacked(PackedPrices.encode(1, 0));
 
         _pause(a);
         vm.prank(keeper);
         vm.expectRevert(abi.encodeWithSelector(IPoppieEulerOracle.AssetIsPaused.selector, a));
-        oracle.keeperPushPacked(PackedPrices.encode(0, 1));
+        oracle.keeperPushPacked(PackedPrices.encode(1, 1));
 
         // An empty payload is a no-op.
         vm.prank(keeper);
@@ -635,7 +658,7 @@ contract PoppieEulerOracleTest is OracleFixture {
             vm.warp(block.timestamp + dts[i]);
             _push(a, seq[i]);
             vm.prank(keeper);
-            o2.keeperPushPacked(PackedPrices.encode(0, uint96(seq[i])));
+            o2.keeperPushPacked(PackedPrices.encode(1, uint96(seq[i])));
             if (i == 1) {
                 _confirm(a, seq[i]);
                 vm.prank(confirmer);
@@ -648,9 +671,9 @@ contract PoppieEulerOracleTest is OracleFixture {
 
     function test_pushPacked_batchOfManyAssets() public {
         bytes memory packed = bytes.concat(
-            PackedPrices.encode(0, uint96(_price(10))),
-            PackedPrices.encode(1, uint96(_price(20))),
-            PackedPrices.encode(2, uint96(_price(30)))
+            PackedPrices.encode(1, uint96(_price(10))),
+            PackedPrices.encode(2, uint96(_price(20))),
+            PackedPrices.encode(3, uint96(_price(30)))
         );
         vm.prank(keeper);
         oracle.keeperPushPacked(packed);

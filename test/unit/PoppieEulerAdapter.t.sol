@@ -36,6 +36,11 @@ contract PoppieEulerAdapterTest is OracleFixture {
         assertEq(IPriceOracle(address(adapter)).name(), "PoppieEulerAdapter");
     }
 
+    function test_constructor_rejectsZeroOracle() public {
+        vm.expectRevert(abi.encodeWithSignature("ZeroAddress()"));
+        new PoppieEulerAdapter(IPoppieEulerOracle(address(0)));
+    }
+
     function test_unsupportedPairs() public {
         address other = makeAddr("other");
         vm.expectRevert(abi.encodeWithSelector(IPoppieEulerAdapter.UnsupportedPair.selector, a, other));

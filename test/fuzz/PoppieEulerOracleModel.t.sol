@@ -102,7 +102,7 @@ contract PoppieEulerOracleModelTest is OracleFixture {
         if (packed) {
             bytes memory data;
             for (uint256 i; i < prices.length; ++i) {
-                data = bytes.concat(data, PackedPrices.encode(0, uint96(prices[i])));
+                data = bytes.concat(data, PackedPrices.encode(1, uint96(prices[i])));
             }
             try oracle.keeperPushPacked(data) {
                 return true;

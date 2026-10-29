@@ -24,7 +24,7 @@ contract OracleHarness is PoppieEulerOracle {
             priceClass: IPoppieEulerOracle.PriceClass.BlueChip,
             decimals: 18,
             listed: true,
-            id: 0
+            id: 1
         });
         _pending[asset] = Pending({pendingPrice: P, pendingTs: Pts});
         if (_tokens.length == 0) _tokens.push(asset);

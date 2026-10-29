@@ -3,6 +3,7 @@ pragma solidity 0.8.24;
 
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
+import {ZeroAddress} from "../access/Errors.sol";
 import {IPoppieEulerAdapter} from "../interfaces/IPoppieEulerAdapter.sol";
 import {IPoppieEulerOracle} from "../interfaces/IPoppieEulerOracle.sol";
 
@@ -34,7 +35,10 @@ contract PoppieEulerAdapter is IPoppieEulerAdapter {
     /// @inheritdoc IPoppieEulerAdapter
     address public constant override USD = address(840);
 
+    /// @param oracle_ The `PoppieEulerOracle` to read. Must be non-zero (`ZeroAddress`, the shared error of
+    /// `access/Errors.sol`; no interface change).
     constructor(IPoppieEulerOracle oracle_) {
+        if (address(oracle_) == address(0)) revert ZeroAddress();
         oracle = oracle_;
     }
 

@@ -20,12 +20,14 @@ import {PackedPrices} from "./PackedPrices.sol";
 ///  3. otherwise, with `dir = sign(p - L)`: a push inside `minPendingSpacing` of the last pending push is ignored;
 ///     else same direction increments the count and a new direction restarts it at 1; `count >= n` promotes.
 ///
-/// Conforms to `IPoppieEulerOracle` (same functions, events and errors, same selectors) without inheriting it:
-/// the interface declares `error ZeroAddress()` and so does `PoppieAccessControl`, and Solidity rejects the same
-/// error name from two bases. The two declarations have the same selector, so the ABI is unchanged. Interface
-/// types are referenced by qualified name, and the tests exercise every interface function through the
-/// interface type.
-contract PoppieEulerOracle is PoppieAccessControl {
+/// Listing takes underlying tokens only, never wrappers (the escrow vault holds the wrapper; the router resolves it
+/// to the underlying token before it reaches the adapter). This is a listing rule for `MS_OPS`, not an on-chain
+/// check: the oracle only verifies what a token exposes (non-zero address, `decimals() <= 18`, not yet listed).
+///
+/// Asset ids are sequential and start at 1; id 0 is never assigned and is rejected by the packed push.
+/// `ZeroAddress` comes from the interface; `PoppieAccessControl` reverts with the shared file-level error of
+/// `access/Errors.sol`, which has the same selector.
+contract PoppieEulerOracle is IPoppieEulerOracle, PoppieAccessControl {
     /// @dev Hot slot, 29 bytes. Same field order as the first part of `IPoppieEulerOracle.AssetData`.
     struct Hot {
         uint128 lastPrice;
@@ -33,7 +35,7 @@ contract PoppieEulerOracle is PoppieAccessControl {
         uint8 pendingCount;
         int8 pendingDir;
         bool paused;
-        IPoppieEulerOracle.PriceClass priceClass;
+        PriceClass priceClass;
         uint8 decimals;
         bool listed;
         uint16 id;
@@ -61,7 +63,8 @@ contract PoppieEulerOracle is PoppieAccessControl {
     Params internal _params;
     mapping(address asset => Hot) internal _hot;
     mapping(address asset => Pending) internal _pending;
-    /// @dev Index is the `uint16` id; ids are assigned sequentially from 0 and never reused.
+    /// @dev Listed tokens in listing order: the token with `uint16` id `k` is `_tokens[k - 1]`. Ids are assigned
+    /// sequentially from 1 and never reused; id 0 is unassigned.
     address[] internal _tokens;
 
     /// @param initialAdmin Receives `DEFAULT_ADMIN_ROLE` (see `PoppieAccessControl`).
@@ -70,18 +73,22 @@ contract PoppieEulerOracle is PoppieAccessControl {
         _params = Params({
             maxPriceAge: 1 hours, n: 3, minPendingSpacing: 10 minutes, hBlueChip: 1000, hM1: 1500, hM2: 2000, hM3: 3000
         });
-        emit IPoppieEulerOracle.ParamsUpdated(1 hours, 3, 10 minutes);
-        emit IPoppieEulerOracle.ClassHaircutSet(IPoppieEulerOracle.PriceClass.BlueChip, 1000);
-        emit IPoppieEulerOracle.ClassHaircutSet(IPoppieEulerOracle.PriceClass.M1, 1500);
-        emit IPoppieEulerOracle.ClassHaircutSet(IPoppieEulerOracle.PriceClass.M2, 2000);
-        emit IPoppieEulerOracle.ClassHaircutSet(IPoppieEulerOracle.PriceClass.M3, 3000);
+        emit ParamsUpdated(1 hours, 3, 10 minutes);
+        emit ClassHaircutSet(PriceClass.BlueChip, 1000);
+        emit ClassHaircutSet(PriceClass.M1, 1500);
+        emit ClassHaircutSet(PriceClass.M2, 2000);
+        emit ClassHaircutSet(PriceClass.M3, 3000);
     }
 
     // -- Keeper (K_PRICE) -----------------------------------------------------------------------
 
-    function keeperPushPrices(address[] calldata assets, uint128[] calldata prices) external onlyRole(K_PRICE) {
+    function keeperPushPrices(address[] calldata assets, uint128[] calldata prices)
+        external
+        override
+        onlyRole(K_PRICE)
+    {
         uint256 len = assets.length;
-        if (len != prices.length) revert IPoppieEulerOracle.LengthMismatch();
+        if (len != prices.length) revert LengthMismatch();
         Params memory g = _params;
         for (uint256 i; i < len;) {
             _pushOne(assets[i], prices[i], g);
@@ -91,33 +98,34 @@ contract PoppieEulerOracle is PoppieAccessControl {
         }
     }
 
-    function keeperPushPacked(bytes calldata data) external onlyRole(K_PRICE) {
-        if (!PackedPrices.isValidLength(data)) revert IPoppieEulerOracle.InvalidPackedLength(data.length);
+    function keeperPushPacked(bytes calldata data) external override onlyRole(K_PRICE) {
+        if (!PackedPrices.isValidLength(data)) revert InvalidPackedLength(data.length);
         uint256 len = PackedPrices.entryCount(data);
         uint256 count = _tokens.length;
         Params memory g = _params;
         for (uint256 i; i < len;) {
             (uint16 id, uint96 price) = PackedPrices.decode(data, i);
-            if (id >= count) revert IPoppieEulerOracle.UnknownAssetId(id);
-            _pushOne(_tokens[id], price, g);
+            // Ids start at 1; id `k` is `_tokens[k - 1]`. Id 0 is never assigned.
+            if (id == 0 || id > count) revert UnknownAssetId(id);
+            _pushOne(_tokens[id - 1], price, g);
             unchecked {
                 ++i;
             }
         }
     }
 
-    function pauseAssets(address[] calldata assets) external {
+    function pauseAssets(address[] calldata assets) external override {
         if (!hasRole(K_PRICE, msg.sender) && !hasRole(MS_OPS, msg.sender)) {
             revert AccessControlUnauthorizedAccount(msg.sender, K_PRICE);
         }
         for (uint256 i; i < assets.length;) {
             address asset = assets[i];
             Hot memory h = _hot[asset];
-            if (!h.listed) revert IPoppieEulerOracle.AssetNotListed(asset);
+            if (!h.listed) revert AssetNotListed(asset);
             if (!h.paused) {
                 h.paused = true;
                 _hot[asset] = h;
-                emit IPoppieEulerOracle.AssetPaused(asset, msg.sender);
+                emit AssetPaused(asset, msg.sender);
             }
             unchecked {
                 ++i;
@@ -127,13 +135,13 @@ contract PoppieEulerOracle is PoppieAccessControl {
 
     // -- Confirmation (K_CONFIRM) ---------------------------------------------------------------
 
-    function confirm(address asset, uint128 price) external onlyRole(K_CONFIRM) {
+    function confirm(address asset, uint128 price) external override onlyRole(K_CONFIRM) {
         _confirm(asset, price, _params.maxPriceAge);
     }
 
-    function confirmBatch(address[] calldata assets, uint128[] calldata prices) external onlyRole(K_CONFIRM) {
+    function confirmBatch(address[] calldata assets, uint128[] calldata prices) external override onlyRole(K_CONFIRM) {
         uint256 len = assets.length;
-        if (len != prices.length) revert IPoppieEulerOracle.LengthMismatch();
+        if (len != prices.length) revert LengthMismatch();
         uint40 maxAge = _params.maxPriceAge;
         for (uint256 i; i < len;) {
             _confirm(assets[i], prices[i], maxAge);
@@ -148,23 +156,21 @@ contract PoppieEulerOracle is PoppieAccessControl {
     /// @dev The oracle can only check what a token exposes: non-zero address, `decimals()` <= 18, not already
     /// listed. That the token is the underlying and not a wrapper is a listing rule enforced by the `MS_OPS`
     /// process and downstream by `PoppieRouterGovernor.addRoute` (approved tokens only).
-    function listAssets(address[] calldata tokens, IPoppieEulerOracle.PriceClass[] calldata classes)
-        external
-        onlyRole(MS_OPS)
-    {
+    function listAssets(address[] calldata tokens, PriceClass[] calldata classes) external override onlyRole(MS_OPS) {
         uint256 len = tokens.length;
-        if (len != classes.length) revert IPoppieEulerOracle.LengthMismatch();
+        if (len != classes.length) revert LengthMismatch();
         for (uint256 i; i < len;) {
             address token = tokens[i];
             if (token == address(0)) revert ZeroAddress();
-            if (_hot[token].listed) revert IPoppieEulerOracle.AssetAlreadyListed(token);
-            uint256 idx = _tokens.length;
-            if (idx > type(uint16).max) revert IPoppieEulerOracle.TooManyAssets();
+            if (_hot[token].listed) revert AssetAlreadyListed(token);
+            // The next id is `count + 1`; the last assignable id is `type(uint16).max`.
+            uint256 nextId = _tokens.length + 1;
+            if (nextId > type(uint16).max) revert TooManyAssets();
             uint8 dec = IERC20Metadata(token).decimals();
-            if (dec > 18) revert IPoppieEulerOracle.DecimalsTooHigh(dec);
-            // casting to 'uint16' is safe because `idx <= type(uint16).max` was checked above
+            if (dec > 18) revert DecimalsTooHigh(dec);
+            // casting to 'uint16' is safe because `nextId <= type(uint16).max` was checked above
             // forge-lint: disable-next-line(unsafe-typecast)
-            uint16 id = uint16(idx);
+            uint16 id = uint16(nextId);
             _hot[token] = Hot({
                 lastPrice: 0,
                 lastPriceTs: 0,
@@ -177,22 +183,22 @@ contract PoppieEulerOracle is PoppieAccessControl {
                 id: id
             });
             _tokens.push(token);
-            emit IPoppieEulerOracle.AssetListed(token, id, classes[i], dec);
+            emit AssetListed(token, id, classes[i], dec);
             unchecked {
                 ++i;
             }
         }
     }
 
-    function unpauseAssets(address[] calldata assets) external onlyRole(MS_OPS) {
+    function unpauseAssets(address[] calldata assets) external override onlyRole(MS_OPS) {
         for (uint256 i; i < assets.length;) {
             address asset = assets[i];
             Hot memory h = _hot[asset];
-            if (!h.listed) revert IPoppieEulerOracle.AssetNotListed(asset);
+            if (!h.listed) revert AssetNotListed(asset);
             if (h.paused) {
                 h.paused = false;
                 _hot[asset] = h;
-                emit IPoppieEulerOracle.AssetUnpaused(asset, msg.sender);
+                emit AssetUnpaused(asset, msg.sender);
             }
             unchecked {
                 ++i;
@@ -202,57 +208,57 @@ contract PoppieEulerOracle is PoppieAccessControl {
 
     // -- Risk params (MS_OPS, instant) ----------------------------------------------------------
 
-    function setAssetClass(address asset, IPoppieEulerOracle.PriceClass priceClass) external onlyRole(MS_OPS) {
+    function setAssetClass(address asset, PriceClass priceClass) external override onlyRole(MS_OPS) {
         Hot memory h = _hot[asset];
-        if (!h.listed) revert IPoppieEulerOracle.AssetNotListed(asset);
+        if (!h.listed) revert AssetNotListed(asset);
         h.priceClass = priceClass;
         _hot[asset] = h;
-        emit IPoppieEulerOracle.AssetClassSet(asset, priceClass);
+        emit AssetClassSet(asset, priceClass);
     }
 
-    function setClassHaircut(IPoppieEulerOracle.PriceClass priceClass, uint16 newHaircutBps) external onlyRole(MS_OPS) {
-        if (newHaircutBps > BPS) revert IPoppieEulerOracle.InvalidParam();
+    function setClassHaircut(PriceClass priceClass, uint16 newHaircutBps) external override onlyRole(MS_OPS) {
+        if (newHaircutBps > BPS) revert InvalidParam();
         Params memory g = _params;
-        if (priceClass == IPoppieEulerOracle.PriceClass.BlueChip) g.hBlueChip = newHaircutBps;
-        else if (priceClass == IPoppieEulerOracle.PriceClass.M1) g.hM1 = newHaircutBps;
-        else if (priceClass == IPoppieEulerOracle.PriceClass.M2) g.hM2 = newHaircutBps;
+        if (priceClass == PriceClass.BlueChip) g.hBlueChip = newHaircutBps;
+        else if (priceClass == PriceClass.M1) g.hM1 = newHaircutBps;
+        else if (priceClass == PriceClass.M2) g.hM2 = newHaircutBps;
         else g.hM3 = newHaircutBps;
         _params = g;
-        emit IPoppieEulerOracle.ClassHaircutSet(priceClass, newHaircutBps);
+        emit ClassHaircutSet(priceClass, newHaircutBps);
     }
 
-    function setMaxPriceAge(uint40 newMaxPriceAge) external onlyRole(MS_OPS) {
-        if (newMaxPriceAge == 0) revert IPoppieEulerOracle.InvalidParam();
+    function setMaxPriceAge(uint40 newMaxPriceAge) external override onlyRole(MS_OPS) {
+        if (newMaxPriceAge == 0) revert InvalidParam();
         _params.maxPriceAge = newMaxPriceAge;
-        emit IPoppieEulerOracle.ParamsUpdated(newMaxPriceAge, _params.n, _params.minPendingSpacing);
+        emit ParamsUpdated(newMaxPriceAge, _params.n, _params.minPendingSpacing);
     }
 
-    function setN(uint8 newN) external onlyRole(MS_OPS) {
-        if (newN < 2) revert IPoppieEulerOracle.InvalidParam();
+    function setN(uint8 newN) external override onlyRole(MS_OPS) {
+        if (newN < 2) revert InvalidParam();
         _params.n = newN;
-        emit IPoppieEulerOracle.ParamsUpdated(_params.maxPriceAge, newN, _params.minPendingSpacing);
+        emit ParamsUpdated(_params.maxPriceAge, newN, _params.minPendingSpacing);
     }
 
-    function setMinPendingSpacing(uint40 newMinPendingSpacing) external onlyRole(MS_OPS) {
-        if (newMinPendingSpacing == 0) revert IPoppieEulerOracle.InvalidParam();
+    function setMinPendingSpacing(uint40 newMinPendingSpacing) external override onlyRole(MS_OPS) {
+        if (newMinPendingSpacing == 0) revert InvalidParam();
         _params.minPendingSpacing = newMinPendingSpacing;
-        emit IPoppieEulerOracle.ParamsUpdated(_params.maxPriceAge, _params.n, newMinPendingSpacing);
+        emit ParamsUpdated(_params.maxPriceAge, _params.n, newMinPendingSpacing);
     }
 
     // -- Views ----------------------------------------------------------------------------------
 
-    function state(address asset) external view returns (IPoppieEulerOracle.PriceState) {
+    function state(address asset) external view override returns (PriceState) {
         Hot memory h = _hot[asset];
-        if (!h.listed) revert IPoppieEulerOracle.AssetNotListed(asset);
-        (IPoppieEulerOracle.PriceState s,) = _derive(asset, h, _params.maxPriceAge);
+        if (!h.listed) revert AssetNotListed(asset);
+        (PriceState s,) = _derive(asset, h, _params.maxPriceAge);
         return s;
     }
 
     /// @dev An unlisted asset returns the zero record (`listed == false`).
-    function getAssetData(address asset) external view returns (IPoppieEulerOracle.AssetData memory d) {
+    function getAssetData(address asset) external view override returns (AssetData memory d) {
         Hot memory h = _hot[asset];
         Pending memory p = _pending[asset];
-        d = IPoppieEulerOracle.AssetData({
+        d = AssetData({
             lastPrice: h.lastPrice,
             lastPriceTs: h.lastPriceTs,
             pendingCount: h.pendingCount,
@@ -267,20 +273,16 @@ contract PoppieEulerOracle is PoppieAccessControl {
         });
     }
 
-    function getQuoteData(address asset) external view returns (IPoppieEulerOracle.QuoteData memory) {
+    function getQuoteData(address asset) external view override returns (QuoteData memory) {
         return _quoteData(asset, _params);
     }
 
-    function getStates(address[] calldata assets)
-        external
-        view
-        returns (IPoppieEulerOracle.PriceState[] memory states)
-    {
-        states = new IPoppieEulerOracle.PriceState[](assets.length);
+    function getStates(address[] calldata assets) external view override returns (PriceState[] memory states) {
+        states = new PriceState[](assets.length);
         uint40 maxAge = _params.maxPriceAge;
         for (uint256 i; i < assets.length;) {
             Hot memory h = _hot[assets[i]];
-            if (!h.listed) revert IPoppieEulerOracle.AssetNotListed(assets[i]);
+            if (!h.listed) revert AssetNotListed(assets[i]);
             (states[i],) = _derive(assets[i], h, maxAge);
             unchecked {
                 ++i;
@@ -288,12 +290,8 @@ contract PoppieEulerOracle is PoppieAccessControl {
         }
     }
 
-    function getQuoteDataBatch(address[] calldata assets)
-        external
-        view
-        returns (IPoppieEulerOracle.QuoteData[] memory data)
-    {
-        data = new IPoppieEulerOracle.QuoteData[](assets.length);
+    function getQuoteDataBatch(address[] calldata assets) external view override returns (QuoteData[] memory data) {
+        data = new QuoteData[](assets.length);
         Params memory g = _params;
         for (uint256 i; i < assets.length;) {
             data[i] = _quoteData(assets[i], g);
@@ -303,44 +301,44 @@ contract PoppieEulerOracle is PoppieAccessControl {
         }
     }
 
-    function isListed(address asset) external view returns (bool) {
+    function isListed(address asset) external view override returns (bool) {
         return _hot[asset].listed;
     }
 
-    function assetId(address asset) external view returns (uint16) {
+    function assetId(address asset) external view override returns (uint16) {
         Hot memory h = _hot[asset];
-        if (!h.listed) revert IPoppieEulerOracle.AssetNotListed(asset);
+        if (!h.listed) revert AssetNotListed(asset);
         return h.id;
     }
 
-    function assetById(uint16 id) external view returns (address) {
-        if (id >= _tokens.length) revert IPoppieEulerOracle.UnknownAssetId(id);
-        return _tokens[id];
+    function assetById(uint16 id) external view override returns (address) {
+        if (id == 0 || id > _tokens.length) revert UnknownAssetId(id);
+        return _tokens[id - 1];
     }
 
-    function assetCount() external view returns (uint256) {
+    function assetCount() external view override returns (uint256) {
         return _tokens.length;
     }
 
-    function maxPriceAge() external view returns (uint40) {
+    function maxPriceAge() external view override returns (uint40) {
         return _params.maxPriceAge;
     }
 
-    function n() external view returns (uint8) {
+    function n() external view override returns (uint8) {
         return _params.n;
     }
 
-    function minPendingSpacing() external view returns (uint40) {
+    function minPendingSpacing() external view override returns (uint40) {
         return _params.minPendingSpacing;
     }
 
-    function haircutBps(IPoppieEulerOracle.PriceClass priceClass) external view returns (uint16) {
+    function haircutBps(PriceClass priceClass) external view override returns (uint16) {
         return _haircut(_params, priceClass);
     }
 
     // -- Internals ------------------------------------------------------------------------------
 
-    function _haircut(Params memory g, IPoppieEulerOracle.PriceClass c) internal pure returns (uint16) {
+    function _haircut(Params memory g, PriceClass c) internal pure returns (uint16) {
         // Ordered comparisons on the enum's ordinal (BlueChip = 0, M1, M2, M3).
         uint8 k = uint8(c);
         if (k < 1) return g.hBlueChip;
@@ -354,7 +352,7 @@ contract PoppieEulerOracle is PoppieAccessControl {
     function _derive(address asset, Hot memory h, uint40 maxAge)
         internal
         view
-        returns (IPoppieEulerOracle.PriceState s, uint128 pendingPrice)
+        returns (PriceState s, uint128 pendingPrice)
     {
         uint256 touched = h.lastPriceTs;
         if (h.pendingCount != 0) {
@@ -363,17 +361,14 @@ contract PoppieEulerOracle is PoppieAccessControl {
             if (p.pendingTs > touched) touched = p.pendingTs;
         }
         if (h.paused || block.timestamp - touched > maxAge) {
-            return (IPoppieEulerOracle.PriceState.Closed, pendingPrice);
+            return (PriceState.Closed, pendingPrice);
         }
-        return (
-            h.pendingCount != 0 ? IPoppieEulerOracle.PriceState.Unconfirmed : IPoppieEulerOracle.PriceState.Live,
-            pendingPrice
-        );
+        return (h.pendingCount != 0 ? PriceState.Unconfirmed : PriceState.Live, pendingPrice);
     }
 
-    function _quoteData(address asset, Params memory g) internal view returns (IPoppieEulerOracle.QuoteData memory q) {
+    function _quoteData(address asset, Params memory g) internal view returns (QuoteData memory q) {
         Hot memory h = _hot[asset];
-        if (!h.listed) revert IPoppieEulerOracle.AssetNotListed(asset);
+        if (!h.listed) revert AssetNotListed(asset);
         (q.state, q.pendingPrice) = _derive(asset, h, g.maxPriceAge);
         q.lastPrice = h.lastPrice;
         q.haircutBps = _haircut(g, h.priceClass);
@@ -384,9 +379,9 @@ contract PoppieEulerOracle is PoppieAccessControl {
     /// move starts, continues, or ends.
     function _pushOne(address asset, uint128 p, Params memory g) internal {
         Hot memory h = _hot[asset];
-        if (!h.listed) revert IPoppieEulerOracle.AssetNotListed(asset);
-        if (h.paused) revert IPoppieEulerOracle.AssetIsPaused(asset);
-        if (p == 0) revert IPoppieEulerOracle.InvalidPrice();
+        if (!h.listed) revert AssetNotListed(asset);
+        if (h.paused) revert AssetIsPaused(asset);
+        if (p == 0) revert InvalidPrice();
 
         uint256 last = h.lastPrice;
         uint40 nowTs = uint40(block.timestamp);
@@ -397,7 +392,7 @@ contract PoppieEulerOracle is PoppieAccessControl {
             h.pendingDir = 1;
             _hot[asset] = h;
             _pending[asset] = Pending({pendingPrice: p, pendingTs: nowTs});
-            emit IPoppieEulerOracle.PricePending(asset, p, 1, 1);
+            emit PricePending(asset, p, 1, 1);
             return;
         }
 
@@ -412,7 +407,7 @@ contract PoppieEulerOracle is PoppieAccessControl {
                 delete _pending[asset];
             }
             _hot[asset] = h;
-            emit IPoppieEulerOracle.PriceLive(asset, p);
+            emit PriceLive(asset, p);
             return;
         }
 
@@ -433,25 +428,25 @@ contract PoppieEulerOracle is PoppieAccessControl {
             h.pendingDir = 0;
             _hot[asset] = h;
             delete _pending[asset];
-            emit IPoppieEulerOracle.PricePromotedByPersistence(asset, p);
-            emit IPoppieEulerOracle.PriceLive(asset, p);
+            emit PricePromotedByPersistence(asset, p);
+            emit PriceLive(asset, p);
         } else {
             h.pendingCount = count;
             h.pendingDir = dir;
             _hot[asset] = h;
             _pending[asset] = Pending({pendingPrice: p, pendingTs: nowTs});
-            emit IPoppieEulerOracle.PricePending(asset, p, count, dir);
+            emit PricePending(asset, p, count, dir);
         }
     }
 
     function _confirm(address asset, uint128 price, uint40 maxAge) internal {
         Hot memory h = _hot[asset];
-        if (!h.listed) revert IPoppieEulerOracle.AssetNotListed(asset);
-        if (h.paused) revert IPoppieEulerOracle.AssetIsPaused(asset);
-        if (h.pendingCount < 1) revert IPoppieEulerOracle.NothingPending(asset);
+        if (!h.listed) revert AssetNotListed(asset);
+        if (h.paused) revert AssetIsPaused(asset);
+        if (h.pendingCount < 1) revert NothingPending(asset);
         Pending memory p = _pending[asset];
-        if (p.pendingPrice != price) revert IPoppieEulerOracle.PendingPriceMismatch(asset, p.pendingPrice, price);
-        if (block.timestamp - p.pendingTs > maxAge) revert IPoppieEulerOracle.PendingPriceStale(asset);
+        if (p.pendingPrice != price) revert PendingPriceMismatch(asset, p.pendingPrice, price);
+        if (block.timestamp - p.pendingTs > maxAge) revert PendingPriceStale(asset);
 
         h.lastPrice = price;
         h.lastPriceTs = uint40(block.timestamp);
@@ -459,7 +454,7 @@ contract PoppieEulerOracle is PoppieAccessControl {
         h.pendingDir = 0;
         _hot[asset] = h;
         delete _pending[asset];
-        emit IPoppieEulerOracle.PriceConfirmed(asset, price, msg.sender);
-        emit IPoppieEulerOracle.PriceLive(asset, price);
+        emit PriceConfirmed(asset, price, msg.sender);
+        emit PriceLive(asset, price);
     }
 }

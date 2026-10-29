@@ -4,6 +4,7 @@ pragma solidity 0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 
+import {ZeroAddress} from "../../src/access/Errors.sol";
 import {PoppieAccessControl} from "../../src/access/PoppieAccessControl.sol";
 import {MS_OPS, K_PRICE, K_CONFIRM, K_TIGHTEN, K_LOOSEN, K_ALLOC, K_GUARD, K_RESERVE} from "../../src/access/Roles.sol";
 
@@ -34,7 +35,7 @@ contract PoppieAccessControlTest is Test {
     }
 
     function test_constructorRejectsZeroTimelock() public {
-        vm.expectRevert(PoppieAccessControl.ZeroAddress.selector);
+        vm.expectRevert(ZeroAddress.selector);
         new AccessControlHarness(address(0));
     }
 

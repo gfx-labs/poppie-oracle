@@ -2,6 +2,7 @@
 pragma solidity 0.8.24;
 
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
+import {ZeroAddress} from "./Errors.sol";
 import {MS_OPS, K_PRICE, K_CONFIRM, K_TIGHTEN, K_LOOSEN, K_ALLOC, K_GUARD, K_RESERVE} from "./Roles.sol";
 
 /// @title PoppieAccessControl
@@ -17,8 +18,6 @@ import {MS_OPS, K_PRICE, K_CONFIRM, K_TIGHTEN, K_LOOSEN, K_ALLOC, K_GUARD, K_RES
 ///      - Every other role keeps OpenZeppelin's rule: only the role admin (`DEFAULT_ADMIN_ROLE`) revokes it.
 ///      Role identifiers live in `Roles.sol`. Derived contracts gate functions with `onlyRole(...)`.
 abstract contract PoppieAccessControl is AccessControl {
-    error ZeroAddress();
-
     /// @param initialAdmin Receives `DEFAULT_ADMIN_ROLE`: the deployer key (handed to the timelock at the end
     /// of the deploy script) or the timelock itself. Must be non-zero.
     constructor(address initialAdmin) {
