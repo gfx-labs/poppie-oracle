@@ -2,8 +2,10 @@ name: CI
 
 # Runs on every PR targeting `scale` and on pushes to `scale`.
 # This workflow is verification only and deliberately does not run for `main`.
-# Merging is done by merge-gate.yml, which waits for the gating jobs below.
-# If you rename a gating job, update the `required` list in merge-gate.yml.
+# Merging is done by merge-gate.yml on `main` (pull_request_target always runs
+# the default branch's copy), which waits for the gating jobs below. If you
+# rename a gating job, update the `required` list in main's merge-gate.yml.
+# A copy of this file also lives on `main` so the gate can dispatch it on `scale`.
 # Gating jobs: Format check, Build, Tests (local), Slither.
 # Advisory only: Tests (fork) — see below.
 
