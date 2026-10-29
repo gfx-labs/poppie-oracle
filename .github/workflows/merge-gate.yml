@@ -1,0 +1,116 @@
+name: Merge gate
+
+# Merges a PR into `scale` once CI is green. Stand-in for GitHub auto-merge +
+# branch protection while no repo admin is available.
+#
+# Why pull_request_target: it always runs THIS file as it exists on `scale`,
+# never the PR branch's copy, so a PR cannot edit the gate before it runs.
+#
+# SECURITY: this workflow runs with a write token on PR events. It must never
+# check out or execute PR code, and must never interpolate PR-controlled text
+# (titles, branch names, bodies) into `run:` scripts. PR data reaches scripts
+# only through env vars.
+#
+# What it does, for a non-draft `pop-*` PR from this repo into `scale`:
+#   1. Refuses PRs that touch CI, agent rules or build config (human merge).
+#   2. Waits for Format check, Build, Tests (local), Slither (GitHub Actions
+#      check runs) on the PR head commit; fails if any is not `success`.
+#   3. Refuses PRs that are behind `scale` (update with `gh pr update-branch`).
+#   4. Re-checks draft/head/behind, then squash-merges that exact head commit.
+#   5. Dispatches CI on `scale`, because merges made with GITHUB_TOKEN do not
+#      trigger push workflows.
+
+on:
+  pull_request_target:
+    branches: [scale]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+# One gate per PR; a new push supersedes the previous gate run.
+concurrency:
+  group: merge-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  merge:
+    name: Merge gate
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      startsWith(github.event.pull_request.head.ref, 'pop-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write # merge + delete head branch
+      pull-requests: write # merge
+      actions: write # dispatch CI on scale
+      checks: read # read CI check runs
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+      PR: ${{ github.event.pull_request.number }}
+      SHA: ${{ github.event.pull_request.head.sha }}
+      BASE: ${{ github.event.pull_request.base.ref }}
+    steps:
+      - name: Refuse PRs that change CI, agent rules or build config
+        run: |
+          changed=$(gh api --paginate "repos/$REPO/pulls/$PR/files?per_page=100" \
+            --jq '.[] | .filename, (.previous_filename // empty)')
+          printf '%s\n' "$changed"
+          if printf '%s\n' "$changed" | grep -qE '^(\.github/|AGENTS\.md$|\.hermes\.md$|slither\.config\.json$|foundry\.toml$)'; then
+            echo "::error::PR changes CI, agent rules, or build config; a human must merge it."
+            exit 1
+          fi
+
+      - name: Wait for required CI checks
+        run: |
+          required=("Format check" "Build" "Tests (local)" "Slither")
+          deadline=$((SECONDS + 45 * 60))
+          while :; do
+            # Only check runs from the GitHub Actions app; this excludes the
+            # code-scanning "Slither" check. Latest run per name wins.
+            runs=$(gh api --paginate "repos/$REPO/commits/$SHA/check-runs?per_page=100" \
+              --jq '.check_runs[] | select(.app.slug == "github-actions") | [.id, .name, .status, (.conclusion // "")] | @tsv')
+            pending=0
+            for name in "${required[@]}"; do
+              line=$(printf '%s\n' "$runs" | awk -F'\t' -v n="$name" '$2 == n' | sort -t$'\t' -k1,1n | tail -n1)
+              status=$(printf '%s' "$line" | cut -f3)
+              conclusion=$(printf '%s' "$line" | cut -f4)
+              if [ -z "$line" ] || [ "$status" != "completed" ]; then
+                pending=1
+              elif [ "$conclusion" != "success" ]; then
+                echo "::error::Required check '$name' concluded '$conclusion'; not merging."
+                exit 1
+              fi
+            done
+            if [ "$pending" -eq 0 ]; then
+              echo "All required checks passed on $SHA."
+              break
+            fi
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "::error::Timed out waiting for required checks on $SHA."
+              exit 1
+            fi
+            sleep 30
+          done
+
+      - name: Re-check PR state and refuse if behind scale
+        run: |
+          state=$(gh api "repos/$REPO/pulls/$PR" --jq '[.state, .draft, .head.sha] | @tsv')
+          IFS=$'\t' read -r pr_state pr_draft pr_head <<<"$state"
+          if [ "$pr_state" != "open" ] || [ "$pr_draft" != "false" ] || [ "$pr_head" != "$SHA" ]; then
+            echo "::error::PR changed while waiting (state=$pr_state draft=$pr_draft head=$pr_head); not merging."
+            exit 1
+          fi
+          behind=$(gh api "repos/$REPO/compare/$BASE...$SHA" --jq '.behind_by')
+          if [ "$behind" != "0" ]; then
+            echo "::error::Branch is $behind commit(s) behind $BASE. Update it with 'gh pr update-branch $PR' (no force-push); CI and this gate re-run automatically."
+            exit 1
+          fi
+
+      - name: Merge
+        run: gh pr merge "$PR" --repo "$REPO" --squash --delete-branch --match-head-commit "$SHA"
+
+      - name: Run CI on scale
+        run: gh workflow run ci.yml --repo "$REPO" --ref "$BASE"
