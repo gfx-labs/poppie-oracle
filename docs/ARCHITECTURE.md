@@ -142,7 +142,7 @@ Euler has no native origination fee, so Poppie enforces one without taking contr
 
 1. The user's EVC batch calls `hub.borrow(amount, receiver = feeRouter)`.
 2. A borrow hook checks that the receiver is the router and records the amount as pending. It rejects `amount = max uint`, which Euler treats as "borrow all available cash."
-3. Later in the batch, the account calls `router.forward(to)`. The router confirms the caller through the EVC, applies the hub's fee rate, sends the fee to the hub's fee receiver (`hub.feeReceiver()`, the same address that receives that hub's interest fee), and sends `amount − fee` to the receiver the account chose. The router has no treasury address of its own. If a hub has no fee receiver set, borrows on it revert.
+3. Later in the batch, the account calls `router.forward(to)`. The router confirms the caller through the EVC, applies the hub's fee rate, sends the fee to the hub's fee receiver (`hub.feeReceiver()`, the same address that receives that hub's interest fee), and sends `amount − fee` to the receiver the account chose. The router has no treasury address of its own. If a hub has no fee receiver set, borrows on it revert. The router also rejects itself, or the zero address, as the receiver `to` or as the fee receiver, so it never keeps funds.
 4. A hook on the hub's vault status check (`OP_VAULT_STATUS_CHECK`) reverts the batch if any router funds are still pending, so the router never holds funds.
 
 A direct, un-batched borrow always reverts, so integrators must use EVC batches. The status-check hook runs after every operation, including liquidations and repays, and passes when nothing is pending.

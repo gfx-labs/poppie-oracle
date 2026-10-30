@@ -42,7 +42,7 @@
 * Hubs registered by `DEFAULT_ADMIN_ROLE` (the deploy script at launch, the timelock afterwards); the hook rejects calls from any vault that is not a registered hub.
 * `borrow`: receiver must be the router, amount must not be `max`, borrows not paused; then `recordPending`.
 * Status check requires `pendingTotal == 0`. Flash loans always revert. Liquidations revert only while a liquidation pause is active.
-* Router: pending amounts in transient storage; non-upgradeable; `forward` must be called via the EVC and resolves the account with `getCurrentOnBehalfOfAccount`; fee rounds up; MS_OPS `sweep` for mistaken transfers. Invariant: no transaction changes the router's balance. The fee goes to `hub.feeReceiver()`; there is no `setTreasury`; a zero fee receiver makes borrows revert.
+* Router: pending amounts in transient storage; non-upgradeable; `forward` must be called via the EVC and resolves the account with `getCurrentOnBehalfOfAccount`; fee rounds up; MS_OPS `sweep` for mistaken transfers. Invariant: no transaction changes the router's balance. The fee goes to `hub.feeReceiver()`; there is no `setTreasury`; a zero fee receiver makes borrows revert. `forward` also rejects `to` and a fee receiver that are the zero address or the router itself, so the router can never keep funds.
 * Pauses: `K_GUARD` borrow pause <= 24h per call with **no cooldown** (it can re-pause as soon as one expires; the control is MS_OPS revoking the key, plus alerts); MS_OPS liquidation pause <= 6h per call, and can be repeated back to back. Pause functions take arrays of hubs; MS_OPS can end either pause early (`unpauseBorrows`, `unpauseLiquidations`).
 * Hook <-> router: both addresses immutable; the deploy script precomputes the CREATE address. No setter.
 
