@@ -178,12 +178,13 @@ The single hook target for all escrow vaults. Escrow vaults are non-upgradeable 
 | Operation | Behaviour |
 | --- | --- |
 | `OP_DEPOSIT`, `OP_MINT`, `OP_SKIM` | Revert if the oracle state of the underlying token is Closed, or if deposits are paused for that vault |
-| `OP_TRANSFER` | The same, except while `evc.isControlCollateralInProgress()` is true, so liquidations can seize collateral during a deposit pause |
+| `OP_TRANSFER` (`transfer`, `transferFrom`, `transferFromMax`) | The same, except while `evc.isControlCollateralInProgress()` is true, so liquidations can seize collateral during a deposit pause |
 | Never hooked | `OP_WITHDRAW`, `OP_REDEEM`, `OP_LIQUIDATE` (on the hub side) |
 
 - **Asset resolution:** the hook first resolves the vault's `asset()`. If it is a wrapper (`factory.isWrapper`), it checks the oracle state of the wrapper's underlying token, which is the only thing the oracle lists.
 - **Deposit pause:** `pauseDeposits(vaults[], duration)`, role `K_GUARD`, `duration ≤ 24h` per call, with the same rules as the borrow pause: no cooldown, tracked per vault, one call for any number of vaults.
 - **Early unpause:** `unpauseDeposits(vaults[])`, role `MS_OPS`.
+- **Transfer entry points:** EVK calls the hook with the original calldata, and `OP_TRANSFER` is raised by `transfer`, `transferFrom` and `transferFromMax`. The hook therefore implements all three selectors with the same check; without the last two, `transferFrom` and `transferFromMax` would always revert (decision on POP-9).
 - Blocking `OP_TRANSFER` while closed also blocks transfers between a user's own sub-accounts for that name. That's acceptable, since it only applies during closures.
 
 ### 3.6 `PoppieRiskSteward`
@@ -308,7 +309,7 @@ Euler doesn't support tokens whose balance changes without a transfer, and an es
 | Adapter | bid ≤ mid ≤ ask; mid reverts in Closed and Unconfirmed; the bid never exceeds `L × (1 − h)` before confirmation; the bid is 0 while `L == 0`; fuzz every state transition |
 | Oracle | promotion only via `confirm` or `n` correctly spaced same-direction pushes; the first price goes live only via `confirm`; a push within the bound resets pending; pause keeps `lastPrice`; listing takes underlying tokens only; the packed and ABI pushes behave identically |
 | Fee router and hub hook | direct borrow reverts; a batched borrow + forward succeeds and the fee lands at `hub.feeReceiver()`; a zero fee receiver reverts; `forward` reverts when `to` is zero or the router, or when the fee receiver is the router; the status check passes with nothing pending (liquidate, repay, deposit); `max` borrows revert; flash loans revert; no transaction changes the router's balance; `forward` can't be called for another account; calls from non-registered vaults are rejected; `K_GUARD` can re-pause as soon as a pause expires; liquidation pauses can be chained; `MS_OPS` ends any pause early; pauses apply to every vault in the array |
-| Escrow hook | every deposit route (deposit, mint, skim, transfer) is blocked while closed; withdraw and redeem are never blocked; wrapped assets are resolved to the underlying token; liquidation seizure succeeds during a deposit pause; `MS_OPS` ends a deposit pause early |
+| Escrow hook | every deposit route (deposit, mint, skim, and transfer, `transferFrom` and `transferFromMax`) is blocked while closed or paused, and open otherwise; withdraw and redeem are never blocked; wrapped assets are resolved to the underlying token; liquidation seizure succeeds during a deposit pause; `MS_OPS` ends a deposit pause early |
 | Wrapper | positive and negative rebases are shared pro rata; no first-depositor inflation (including with a 1-wei seed); a zero seed reverts; the share count is unaffected by rebases; `sweep` never moves the underlying token and sends only to the factory's recipient; pricing works through escrow → wrapper → token |
 | Steward | every bound and rate limit, at its boundary; `promote` is all-or-nothing; ramps are never shortened; stacked cuts followed by ramp cancel restore the original baseline; the override and ramp cancel work in batches of 500; hub caps obey the same ceiling rules as escrow caps; `demote` rejects a band hub of the wrong band; the removed limits no longer apply |
 | Router governor | add-only; non-approved tokens, non-factory wrappers, upgradeable or misconfigured escrow vaults are rejected |

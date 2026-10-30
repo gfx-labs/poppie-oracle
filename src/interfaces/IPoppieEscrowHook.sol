@@ -8,7 +8,8 @@ uint40 constant MAX_DEPOSIT_PAUSE = 24 hours;
 
 /// @title IPoppieEscrowHook
 /// @notice The single hook target for all escrow vaults (CONTRACT_SPEC.md section 3.5).
-/// @dev Hooked operations are `ESCROW_HOOKED_OPS` (see `hooks/HookOps.sol`): deposit, mint, skim, transfer.
+/// @dev Hooked operations are `ESCROW_HOOKED_OPS` (see `hooks/HookOps.sol`): deposit, mint, skim, transfer
+/// (`OP_TRANSFER` covers EVK's `transfer`, `transferFrom` and `transferFromMax`).
 /// EVK calls this contract with the original calldata plus the authenticated caller (20 bytes) appended.
 ///
 /// Each hooked operation reverts when the oracle state of the vault's underlying token is Closed, or when
@@ -43,6 +44,11 @@ interface IPoppieEscrowHook is IHookTarget {
     function skim(uint256 amount, address receiver) external;
     /// @dev OP_TRANSFER. Matches EVK's `transfer` signature; the return value is ignored by EVK.
     function transfer(address to, uint256 amount) external returns (bool);
+    /// @dev OP_TRANSFER, reached through EVK's `transferFrom`. EVK forwards the original calldata, so each
+    /// `OP_TRANSFER` entry point needs its own selector here; without it `transferFrom` would always revert.
+    function transferFrom(address from, address to, uint256 amount) external returns (bool);
+    /// @dev OP_TRANSFER, reached through EVK's `transferFromMax`. Same reason as `transferFrom`.
+    function transferFromMax(address from, address to) external returns (bool);
 
     // -- Governance -----------------------------------------------------------------------------
 
