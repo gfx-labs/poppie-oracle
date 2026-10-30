@@ -97,7 +97,7 @@ Inside the two hard rules above, you have broad latitude. No need to ask for:
 - spinning up `anvil` and running against local/forked state
 - read-only on-chain queries via the `foundry.toml` RPC aliases
 - creating feature branches from `scale`, committing, pushing them, and opening
-  **ready-for-review PRs into `scale`** for the CI merge gate (see Git & PR)
+  **ready-for-review PRs into `scale` with auto-merge enabled** (see Git & PR)
 - reading Linear issues
 
 ---
@@ -105,14 +105,15 @@ Inside the two hard rules above, you have broad latitude. No need to ask for:
 ## Branch model
 
 - **`main`** — never touched by agents. Never commit to it, push to it, open a PR
-  against it, merge into it, or use it as a base. It holds the audited v1 code plus the
-  CI workflows (GitHub only runs `pull_request_target` and dispatched workflows from the
-  default branch). Only a human changes `main`, and only for `.github/` workflow files.
+  against it, merge into it, or use it as a base. It holds the audited v1 code. Only a
+  human changes `main`.
 - **`scale`** — the integration branch. All work lands here, only via PR.
 - **feature branches** — one per issue, branched from the latest `scale`, named after
   the issue (e.g. `pop-6-oracle-v2`), PR'd back into `scale`.
 
 Never push directly to `scale`; every change reaches it through a PR that passes CI.
+A ruleset on `scale` enforces this (PR required, required checks, merge queue, no
+force-push or deletion).
 
 ---
 
@@ -126,14 +127,14 @@ The normal path for a PR is **auto-merge into `scale` once required CI is green.
 2. Before opening the PR, run locally and make pass: `forge fmt`, `forge build`, and the
    full local test suite. Do not open a PR you know is red.
 3. Open the PR **ready for review (not draft)** with base `scale`.
-4. Do not merge and do not enable auto-merge. The "Merge gate" workflow (which runs
-   from `main`) merges the PR
-   once Format, Build, Tests (local) and Slither pass. Never run `gh pr merge`. If the
-   gate refuses because the branch is behind `scale`, update it with
-   `gh pr update-branch <pr>` (never force-push); CI and the gate then re-run.
-   Do not edit `.github/`, AGENTS.md, .hermes.md, slither.config.json or foundry.toml
-   unless the issue explicitly requires it. If it does, open the PR as a draft for a
-   human to merge.
+4. Enable auto-merge on it: `gh pr merge <pr> --auto --squash`. Once Format, Build,
+   Tests (local) and Slither pass, GitHub adds it to the `scale` merge queue, re-runs CI
+   on the queued result and merges it. That is the only allowed way to merge: never run
+   `gh pr merge` without `--auto`, and never use `--admin`. If the PR has conflicts with
+   `scale`, update it with `gh pr update-branch <pr>` (never force-push).
+   Do not edit `.github/`, `.opencode/`, AGENTS.md, .hermes.md, slither.config.json or
+   foundry.toml unless the issue explicitly requires it. If it does, open the PR as a
+   draft and do not enable auto-merge; those paths need a human code-owner approval.
 5. PR body must include: what changed, how it was verified (commands + results), any
    residual risk, and a **Spec conformance** section (see guard below) — either
    "Conforms to spec" or a list of deviations.

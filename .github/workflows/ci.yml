@@ -1,17 +1,20 @@
 name: CI
 
-# Runs on every PR targeting `scale` and on pushes to `scale`.
-# This workflow is verification only and deliberately does not run for `main`.
-# Merging is done by merge-gate.yml on `main` (pull_request_target always runs
-# the default branch's copy), which waits for the gating jobs below. If you
-# rename a gating job, update the `required` list in main's merge-gate.yml.
-# A copy of this file also lives on `main` so the gate can dispatch it on `scale`.
+# Runs on every PR targeting `scale`, on every `scale` merge-queue entry, and
+# on pushes to `scale`. Verification only; it never merges, approves or pushes,
+# and deliberately does not run for `main`.
+# Merging is GitHub native auto-merge + the `scale` merge queue. The `scale`
+# ruleset requires the four gating jobs below by name (GitHub Actions source);
+# if you rename one, update the ruleset too or merges will stall.
 # Gating jobs: Format check, Build, Tests (local), Slither.
 # Advisory only: Tests (fork) — see below.
 
 on:
   pull_request:
     branches: [scale]
+  # Merge queue: required checks must also report on the queued merge commit.
+  merge_group:
+    types: [checks_requested]
   push:
     branches: [scale]
   workflow_dispatch:
