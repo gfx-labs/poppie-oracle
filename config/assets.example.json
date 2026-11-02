@@ -1,0 +1,50 @@
+{
+  "_comment": "EXAMPLE ONLY: token addresses are placeholders. seedAmount and supplyCapCeiling are raw token units (the ceiling is converted to wrapper shares for wrapped assets). hubIndex indexes the deployment's hubs (0 Prime, 1 M1, 2 M2, 3 M3): the band hub for long tail, any hub for blue chips.",
+  "assets": [
+    {
+      "symbol": "EXAMPLE-BC-MUL",
+      "token": "0x0000000000000000000000000000000000001001",
+      "mechanism": "multiplier",
+      "riskClass": "BlueChip",
+      "hubIndex": 0,
+      "seedAmount": "1000000000000000000",
+      "supplyCapCeiling": "5000000000000000000000"
+    },
+    {
+      "symbol": "EXAMPLE-BC-REB",
+      "token": "0x0000000000000000000000000000000000001002",
+      "mechanism": "balance-changing",
+      "riskClass": "BlueChip",
+      "hubIndex": 0,
+      "seedAmount": "1000000000000000000",
+      "supplyCapCeiling": "5000000000000000000000"
+    },
+    {
+      "symbol": "EXAMPLE-M1-DIV",
+      "token": "0x0000000000000000000000000000000000001003",
+      "mechanism": "distributing",
+      "riskClass": "M1",
+      "hubIndex": 1,
+      "seedAmount": "1000000000000000000",
+      "supplyCapCeiling": "2000000000000000000000"
+    },
+    {
+      "symbol": "EXAMPLE-M2-MUL",
+      "token": "0x0000000000000000000000000000000000001004",
+      "mechanism": "multiplier",
+      "riskClass": "M2",
+      "hubIndex": 2,
+      "seedAmount": "1000000",
+      "supplyCapCeiling": "1000000000000"
+    },
+    {
+      "symbol": "EXAMPLE-M3-REB",
+      "token": "0x0000000000000000000000000000000000001005",
+      "mechanism": "balance-changing",
+      "riskClass": "M3",
+      "hubIndex": 3,
+      "seedAmount": "100000000",
+      "supplyCapCeiling": "50000000000000"
+    }
+  ]
+}

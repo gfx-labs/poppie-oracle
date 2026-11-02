@@ -1,0 +1,117 @@
+{
+  "_comment": "EXAMPLE ONLY. Every address is a placeholder. IRM curves (floor 2/3/4/5%, kink 80% at floor+8%, 100% APR at full utilisation), caps, ceilings and Earn values are PLACEHOLDERS pending risk sign-off. Fees and liquidation discounts follow docs/ARCHITECTURE.md. Caps are raw USDC units; IRM rates are per-second ray (EVK IRMLinearKink).",
+  "evc": "0x00000000000000000000000000000000000000e1",
+  "eVaultFactory": "0x00000000000000000000000000000000000000e2",
+  "usdc": "0x00000000000000000000000000000000000000e3",
+  "usdcUsdOracle": "0x00000000000000000000000000000000000000e4",
+  "kinkIrmFactory": "0x0000000000000000000000000000000000000000",
+  "eulerEarnFactory": "0x0000000000000000000000000000000000000000",
+  "timelockDelay": 172800,
+  "roles": {
+    "msAdmin": "0x00000000000000000000000000000000000000a1",
+    "msOps": "0x00000000000000000000000000000000000000a2",
+    "reserveSafe": "0x00000000000000000000000000000000000000a3",
+    "kPrice": "0x00000000000000000000000000000000000000b1",
+    "kConfirm": "0x00000000000000000000000000000000000000b2",
+    "kTighten": "0x00000000000000000000000000000000000000b3",
+    "kGuard": "0x00000000000000000000000000000000000000b4",
+    "kAlloc": "0x00000000000000000000000000000000000000b5"
+  },
+  "hubs": [
+    {
+      "name": "Prime",
+      "band": 0,
+      "maxLiquidationDiscount": 800,
+      "interestFee": 1000,
+      "originationFeeBps": 10,
+      "irm": {
+        "baseRate": "634195839675291730",
+        "slope1": "738301127",
+        "slope2": "33223550757",
+        "kink": 3435973836
+      },
+      "supplyCap": "50000000000000",
+      "borrowCap": "40000000000000",
+      "supplyCapCeiling": "100000000000000",
+      "borrowCapCeiling": "80000000000000",
+      "feeReceiver": "0x00000000000000000000000000000000000000f1"
+    },
+    {
+      "name": "M1",
+      "band": 1,
+      "maxLiquidationDiscount": 1000,
+      "interestFee": 1500,
+      "originationFeeBps": 15,
+      "irm": {
+        "baseRate": "951293759512937595",
+        "slope1": "738301127",
+        "slope2": "32854400193",
+        "kink": 3435973836
+      },
+      "supplyCap": "50000000000000",
+      "borrowCap": "40000000000000",
+      "supplyCapCeiling": "100000000000000",
+      "borrowCapCeiling": "80000000000000",
+      "feeReceiver": "0x00000000000000000000000000000000000000f1"
+    },
+    {
+      "name": "M2",
+      "band": 2,
+      "maxLiquidationDiscount": 1500,
+      "interestFee": 2000,
+      "originationFeeBps": 25,
+      "irm": {
+        "baseRate": "1268391679350583460",
+        "slope1": "738301127",
+        "slope2": "32485249629",
+        "kink": 3435973836
+      },
+      "supplyCap": "50000000000000",
+      "borrowCap": "40000000000000",
+      "supplyCapCeiling": "100000000000000",
+      "borrowCapCeiling": "80000000000000",
+      "feeReceiver": "0x00000000000000000000000000000000000000f1"
+    },
+    {
+      "name": "M3",
+      "band": 3,
+      "maxLiquidationDiscount": 2000,
+      "interestFee": 2500,
+      "originationFeeBps": 35,
+      "irm": {
+        "baseRate": "1585489599188229325",
+        "slope1": "738301127",
+        "slope2": "32116099065",
+        "kink": 3435973836
+      },
+      "supplyCap": "50000000000000",
+      "borrowCap": "40000000000000",
+      "supplyCapCeiling": "100000000000000",
+      "borrowCapCeiling": "80000000000000",
+      "feeReceiver": "0x00000000000000000000000000000000000000f1"
+    }
+  ],
+  "earns": [
+    {
+      "name": "Poppie Prime Earn",
+      "symbol": "ppPRIME",
+      "timelock": 86400,
+      "capPerHub": "10000000000000",
+      "hubIndexes": [
+        0
+      ]
+    },
+    {
+      "name": "Poppie Yield Earn",
+      "symbol": "ppYIELD",
+      "timelock": 86400,
+      "capPerHub": "10000000000000",
+      "hubIndexes": [
+        0,
+        1,
+        2,
+        3
+      ]
+    }
+  ]
+}

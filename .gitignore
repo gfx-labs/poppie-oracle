@@ -15,3 +15,6 @@ src/soljson-latest.js
 
 # Slither SARIF output
 results.sarif
+
+# Local (chain 31337) deployment records written by script runs
+deployments/31337.json

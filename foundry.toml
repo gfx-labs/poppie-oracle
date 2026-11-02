@@ -40,6 +40,14 @@ remappings = [
     "lib/evk-periphery/:openzeppelin-contracts-upgradeable/=lib/evk-periphery/lib/openzeppelin-contracts-upgradeable/contracts/",
 ]
 
+# Scripts (POP-14) read deploy/asset configs and write deployment records and Safe Transaction Builder batches.
+# Nothing else on disk is reachable from scripts or tests.
+fs_permissions = [
+    { access = "read", path = "./config" },
+    { access = "read-write", path = "./deployments" },
+    { access = "read-write", path = "./batches" },
+]
+
 [profile.default.fuzz]
 runs = 256
 
