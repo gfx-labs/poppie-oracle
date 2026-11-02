@@ -6,6 +6,7 @@ import {Test} from "forge-std/Test.sol";
 import {
     IEVault,
     IERC20 as IEVKERC20,
+    IToken,
     IERC4626 as IEVKERC4626,
     IVault as IEVKVault,
     IBorrowing,
@@ -63,6 +64,9 @@ contract InterfacesTest is PoppieTestBase {
         assertEq(IPoppieEscrowHook.mint.selector, IEVKERC4626.mint.selector);
         assertEq(IPoppieEscrowHook.skim.selector, IEVKVault.skim.selector);
         assertEq(IPoppieEscrowHook.transfer.selector, IEVKERC20.transfer.selector);
+        // OP_TRANSFER is also reached through transferFrom and transferFromMax, with their own selectors.
+        assertEq(IPoppieEscrowHook.transferFrom.selector, IEVKERC20.transferFrom.selector);
+        assertEq(IPoppieEscrowHook.transferFromMax.selector, IToken.transferFromMax.selector);
     }
 
     // Compile-time inheritance checks: these conversions only compile if the interface extends the base.
