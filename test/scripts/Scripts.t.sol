@@ -314,6 +314,16 @@ contract ScriptsTest is PoppieTestBase {
         assertEq(lb[0].wrapper, address(0));
     }
 
+    /// @dev The Arbitrum template carries canonical Euler addresses but zero Poppie role holders, which Deploy
+    /// rejects: it cannot be used until a human fills it in (POP-18).
+    function test_arbitrumTemplateIsRejectedUntilFilled() public {
+        DeployConfig memory c = deployScript.loadDeployConfig("config/deploy.arbitrum.json");
+        assertEq(c.evc, 0x6302ef0F34100CDDFb5489fbcB6eE1AA95CD1066);
+        assertEq(c.usdcUsdOracle, address(0));
+        vm.expectRevert(bytes("Deploy: Euler core addresses"));
+        deployScript.deploy(c, deployer);
+    }
+
     function _contains(string memory s, string memory sub) internal pure returns (bool) {
         bytes memory a = bytes(s);
         bytes memory b = bytes(sub);

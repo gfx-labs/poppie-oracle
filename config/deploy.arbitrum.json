@@ -1,0 +1,117 @@
+{
+  "_comment": "ARBITRUM LAUNCH TEMPLATE (POP-18, human only). Euler addresses are canonical (euler-xyz/euler-interfaces addresses/42161, checked on chain). Every Poppie role holder and usdcUsdOracle is ZERO on purpose: Deploy.s.sol rejects zero values, so this file cannot be used until a human fills them in. hub feeReceiver values are zero for the same reason. IRM curves, caps, ceilings and Earn values are PLACEHOLDERS pending risk sign-off.",
+  "evc": "0x6302ef0F34100CDDFb5489fbcB6eE1AA95CD1066",
+  "eVaultFactory": "0x78Df1CF5bf06a7f27f2ACc580B934238C1b80D50",
+  "usdc": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+  "usdcUsdOracle": "0x0000000000000000000000000000000000000000",
+  "kinkIrmFactory": "0xE055ea126c7704fFCf3Bd8a8F46aC93A6965560E",
+  "eulerEarnFactory": "0xB9B5d62B9fE9E1B505466e75817aB178A1D2ec9d",
+  "timelockDelay": 172800,
+  "roles": {
+    "msAdmin": "0x0000000000000000000000000000000000000000",
+    "msOps": "0x0000000000000000000000000000000000000000",
+    "reserveSafe": "0x0000000000000000000000000000000000000000",
+    "kPrice": "0x0000000000000000000000000000000000000000",
+    "kConfirm": "0x0000000000000000000000000000000000000000",
+    "kTighten": "0x0000000000000000000000000000000000000000",
+    "kGuard": "0x0000000000000000000000000000000000000000",
+    "kAlloc": "0x0000000000000000000000000000000000000000"
+  },
+  "hubs": [
+    {
+      "name": "Prime",
+      "band": 0,
+      "maxLiquidationDiscount": 800,
+      "interestFee": 1000,
+      "originationFeeBps": 10,
+      "irm": {
+        "baseRate": "634195839675291730",
+        "slope1": "738301127",
+        "slope2": "33223550757",
+        "kink": 3435973836
+      },
+      "supplyCap": "50000000000000",
+      "borrowCap": "40000000000000",
+      "supplyCapCeiling": "100000000000000",
+      "borrowCapCeiling": "80000000000000",
+      "feeReceiver": "0x0000000000000000000000000000000000000000"
+    },
+    {
+      "name": "M1",
+      "band": 1,
+      "maxLiquidationDiscount": 1000,
+      "interestFee": 1500,
+      "originationFeeBps": 15,
+      "irm": {
+        "baseRate": "951293759512937595",
+        "slope1": "738301127",
+        "slope2": "32854400193",
+        "kink": 3435973836
+      },
+      "supplyCap": "50000000000000",
+      "borrowCap": "40000000000000",
+      "supplyCapCeiling": "100000000000000",
+      "borrowCapCeiling": "80000000000000",
+      "feeReceiver": "0x0000000000000000000000000000000000000000"
+    },
+    {
+      "name": "M2",
+      "band": 2,
+      "maxLiquidationDiscount": 1500,
+      "interestFee": 2000,
+      "originationFeeBps": 25,
+      "irm": {
+        "baseRate": "1268391679350583460",
+        "slope1": "738301127",
+        "slope2": "32485249629",
+        "kink": 3435973836
+      },
+      "supplyCap": "50000000000000",
+      "borrowCap": "40000000000000",
+      "supplyCapCeiling": "100000000000000",
+      "borrowCapCeiling": "80000000000000",
+      "feeReceiver": "0x0000000000000000000000000000000000000000"
+    },
+    {
+      "name": "M3",
+      "band": 3,
+      "maxLiquidationDiscount": 2000,
+      "interestFee": 2500,
+      "originationFeeBps": 35,
+      "irm": {
+        "baseRate": "1585489599188229325",
+        "slope1": "738301127",
+        "slope2": "32116099065",
+        "kink": 3435973836
+      },
+      "supplyCap": "50000000000000",
+      "borrowCap": "40000000000000",
+      "supplyCapCeiling": "100000000000000",
+      "borrowCapCeiling": "80000000000000",
+      "feeReceiver": "0x0000000000000000000000000000000000000000"
+    }
+  ],
+  "earns": [
+    {
+      "name": "Poppie Prime Earn",
+      "symbol": "ppPRIME",
+      "timelock": 86400,
+      "capPerHub": "10000000000000",
+      "hubIndexes": [
+        0
+      ]
+    },
+    {
+      "name": "Poppie Yield Earn",
+      "symbol": "ppYIELD",
+      "timelock": 86400,
+      "capPerHub": "10000000000000",
+      "hubIndexes": [
+        0,
+        1,
+        2,
+        3
+      ]
+    }
+  ]
+}
