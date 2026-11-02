@@ -405,6 +405,8 @@ contract PoppieRiskSteward is IPoppieRiskSteward, PoppieAccessControl, Reentranc
             uint256 r = Math.ceilDiv(uint256(l.liqNow - newL) * 1 days, CUT_STEP);
             if (stays && r < MIN_RAMP) r = MIN_RAMP;
             if (r < l.remaining) r = l.remaining;
+            // <= max(cut 7500 pts x 24h / 5 pts, 72h, an EVK uint32 ramp): fits uint32.
+            // forge-lint: disable-next-line(unsafe-typecast)
             ramp = uint32(r);
             if (!l.ramping) _hubAsset[hub][asset].baseline = l.liqNow;
         }
@@ -530,6 +532,8 @@ contract PoppieRiskSteward is IPoppieRiskSteward, PoppieAccessControl, Reentranc
             l.liqNow = _ramped(liqTarget, initial, targetTs - block.timestamp, rampDuration);
             if (l.liqNow > liqTarget) {
                 l.ramping = true;
+                // targetTs = set time + an EVK uint32 ramp duration, and set time <= now.
+                // forge-lint: disable-next-line(unsafe-typecast)
                 l.remaining = uint32(targetTs - block.timestamp);
             }
         }
@@ -541,6 +545,8 @@ contract PoppieRiskSteward is IPoppieRiskSteward, PoppieAccessControl, Reentranc
         pure
         returns (uint16)
     {
+        // Between target and initial (timeRemaining <= rampDuration), both uint16.
+        // forge-lint: disable-next-line(unsafe-typecast)
         return uint16(target + uint256(initial - target) * timeRemaining / rampDuration);
     }
 
@@ -613,6 +619,8 @@ contract PoppieRiskSteward is IPoppieRiskSteward, PoppieAccessControl, Reentranc
             mantissa /= 10;
             ++exponent;
         }
+        // mantissa <= 1023 (10 bits), exponent < 64 (6 bits) for any amount below 2^256.
+        // forge-lint: disable-next-line(unsafe-typecast)
         return uint16((mantissa << 6) | exponent);
     }
 
