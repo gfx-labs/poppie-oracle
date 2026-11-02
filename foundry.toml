@@ -20,3 +20,33 @@ runs = 256
 [profile.default.invariant]
 runs = 256
 depth = 32
+
+# ── Arbitrum evaluation suites (docs/EVAL_FINDINGS.md) ─────────────────
+# The default profile above is the audited build and is unchanged. The eval
+# suites live outside `test/` so `forge test` never compiles them.
+#
+# Oracle-only checks, compiled with the audited settings (shanghai):
+#   FOUNDRY_PROFILE=eval-oracle forge test
+[profile.eval-oracle]
+test = "eval/oracle"
+cache_path = "cache/eval-oracle"
+out = "out/eval-oracle"
+
+# Full eval: wrappers (OZ 5.6.1 ERC4626 needs cancun), EulerRouter, prototypes.
+# `src/` is recompiled under cancun here, so this is NOT the audited bytecode;
+# behaviour is identical. Needs the nested libs once:
+#   git -C lib/euler-price-oracle submodule update --init --depth 1 \
+#       lib/ethereum-vault-connector lib/solady
+#   FOUNDRY_PROFILE=eval forge test
+[profile.eval]
+test = "eval"
+evm_version = "cancun"
+cache_path = "cache/eval"
+out = "out/eval"
+remappings = [
+    "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+    "forge-std/=lib/forge-std/src/",
+    "euler-price-oracle/=lib/euler-price-oracle/src/",
+    "ethereum-vault-connector/=lib/euler-price-oracle/lib/ethereum-vault-connector/src/",
+    "@solady/=lib/euler-price-oracle/lib/solady/src/",
+]
