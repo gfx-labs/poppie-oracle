@@ -164,7 +164,7 @@ Flash loans are off at launch. They can be enabled later so liquidators can use 
 | Contract | Count | Controlled by |
 | --- | --- | --- |
 | PoppieEulerOracle (keeps the last confirmed price through pauses) | 1 | Roles: `MS_ADMIN` via timelock. Risk params (price classes, haircuts, staleness, `n`): `MS_OPS`, instant |
-| Three-state price adapter | 1 | `MS_ADMIN` via timelock |
+| Three-state price adapter | 1 | Immutable, no admin; replaced only by a route change (`MS_ADMIN` via timelock, router governor `execute`) |
 | USDC/USD fixed-rate oracle | 1 | Immutable |
 | EulerRouter | 1 | `MS_ADMIN` via timelock; `MS_OPS` can only add new routes |
 | IRMs | 1 per band, plus Prime | Swapped by `MS_ADMIN` via timelock |

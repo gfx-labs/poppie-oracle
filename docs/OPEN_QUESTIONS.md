@@ -1,6 +1,6 @@
 # Open questions (v2)
 
-*All questions below were decided on Oct 27 2026; the resolutions are recorded as given. The decisions are folded into `docs/V2_PLAN.md`, `docs/ARCHITECTURE.md` and `docs/CONTRACT_SPEC.md`. Q1 and Q2 are flagged for human review before launch (Linear POP-19 and POP-20).*
+*Q1 to Q12 were decided on Oct 27 2026, Q13 to Q23 on Oct 28 when the interfaces landed, and Q24 onwards during implementation (Nov 2 2026); the resolutions are recorded as given. The decisions are folded into `docs/V2_PLAN.md`, `docs/ARCHITECTURE.md` and `docs/CONTRACT_SPEC.md`. Q1 and Q2 are flagged for human review before launch (Linear POP-19 and POP-20).*
 
 ## Blocks ticket creation / contract code (all resolved)
 
@@ -35,22 +35,31 @@ Raised while fixing the interfaces in `src/interfaces/`. All folded into `CONTRA
   - **Resolution:** `demote(asset, newClass, bandHub)`; `bandHub` must be registered in band `newClass` (`WrongBand`).
 - [x] **Q15. Steward hub registry.** The steward stores the hub list and bands but had no setter.
   - **Resolution:** `addHub(hub, band)`, role `DEFAULT_ADMIN_ROLE`, mirroring the hub hook's `registerHub`.
-- [x] **Q16. Cap ceiling encoding, and hub-level caps** (spec §8).
+- [x] **Q16. Cap ceiling encoding, and hub-level caps** (formerly spec §8).
   - **Resolution:** ceilings use the same raw 16-bit AmountCap as caps (never raw 0), and are stored **per vault**, so hubs get ceilings too. `setCapCeiling` takes supply and borrow ceilings. Hub caps follow the escrow rules: `MS_OPS` sets ceilings, `K_LOOSEN` raises up to them, `K_TIGHTEN` lowers, `MS_OPS` overrides.
 - [x] **Q17. Oracle risk params and the timelock.** The spec put the class haircut, price class, `maxPriceAge`, `n` and `minPendingSpacing` behind the 48h timelock, which conflicted with "no timelock on risk params" and lagged steward demotions by 48h.
   - **Resolution:** all five setters are `MS_OPS`, instant, with hard bounds only (haircut <= 10,000 bps, `n >= 2`, non-zero durations). One setter per param; events `AssetClassSet`, `ClassHaircutSet`, and `ParamsUpdated(maxPriceAge, n, minPendingSpacing)` as a snapshot. `PriceState` is `Closed = 0, Unconfirmed, Live` so an unset state fails closed. Prices are `uint128` in the ABI and `uint96` in the packed format.
 - [x] **Q18. Wrapper minimum seed.** A factory-wide raw-unit minimum doesn't work across decimals.
   - **Resolution:** dropped. `createWrapper(token, seedAmount)` requires only `seedAmount > 0`; the virtual share offset handles first-depositor inflation.
-- [x] **Q19. Who ends a `K_GUARD` pause early** (spec §8).
+- [x] **Q19. Who ends a `K_GUARD` pause early** (formerly spec §8).
   - **Resolution:** `MS_OPS`, via `unpauseBorrows`, `unpauseDeposits` and `unpauseLiquidations`. All pause and unpause functions take arrays of vaults so one call covers every hub or escrow.
 - [x] **Q20. `promote` hub list.** Passing every hub only added a failure mode.
   - **Resolution:** `promote(asset)` uses the stored hub list.
 - [x] **Q21. Hook <-> router circularity.**
-  - **Resolution:** no setter. Both addresses are immutable; the deploy script precomputes the CREATE address and asserts it (POP-9).
+  - **Resolution:** no setter. Both addresses are immutable (POP-7); the deploy script precomputes the CREATE address and asserts it (POP-14).
 - [x] **Q22. Role bootstrapping.** With the timelock as the only admin, launch role grants would each wait 48h.
   - **Resolution:** `PoppieAccessControl(initialAdmin)`. The deploy script passes the deployer key, grants every role, registers hubs, then grants `DEFAULT_ADMIN_ROLE` to the timelock and renounces. The configuration check fails if the deployer keeps any role.
 - [x] **Q23. Dependency pins and test harness.**
   - **Resolution:** evk-periphery `96b83f8` (its EVC/EVK/Earn gitlinks match the deployed contracts; the newer `b54367e` does not); top-level OpenZeppelin `69c8def` (v5.1.0); `optimizer_runs = 200`, since Euler contracts are used at their canonical addresses and only Poppie bytecode depends on it. The local harness uses `GovernorAccessControl` and zero Permit2 / balance tracker; fork tests use the real Permit2.
+
+## Decided during implementation (Nov 2 2026)
+
+- [x] **Q24. Steward interpretations (POP-11).** Settled with the owner: launch LTVs exactly 50% of the class ceilings (gap exempt at launch); `list` supply cap 25% of the ceiling, rounded down; `promote` writes only non-band hubs and keeps the band hub's LTVs and the escrow caps; cut steps measured from the ramped value; cuts clamp the borrow LTV to liquidation − gap; `raiseLTV` may raise the liquidation LTV during a ramp (instant, ends the chain); demotion ramps exactly cut × 24h / 5 pts (rounded up to the second), with the 72h floor in the band hub only. Full list: `CONTRACT_SPEC.md` §3.6.
+- [x] **Q25. Listing flow stage 0 (POP-14).** The approved-token list is timelocked, so each listing batch starts with an MS_ADMIN timelock batch of `setApprovedToken` at least 48h ahead. Stage-2 Safe batches are packed under 20M gas.
+- [x] **Q26. Deploy choices (POP-14).** Timelock executor = MS_ADMIN; the timelock also holds the Governor wildcard; IRMs from the canonical kink IRM factory; Earn created with timelock 0, then raised, ownership offered to the timelock; USDC/USD oracle is a config input.
+- [x] **Q27. Earn and hooked hubs (POP-12).** Verified on the Arbitrum fork: Earn's factory perspective accepts hooked hubs.
+
+Open decisions raised during implementation are listed in `CONTRACT_SPEC.md` §8 (M2/M3 ceilings vs the gap rule, ramp cancel outside the band hub, blue-chip backfill for new hubs, Earn ownership acceptance, escrow seed custody, USDC/USD oracle choice).
 
 ## Deferred
 

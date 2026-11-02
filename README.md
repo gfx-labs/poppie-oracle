@@ -1,29 +1,85 @@
-# Poppie Euler Oracle
+# Poppie on Euler V2 (Arbitrum)
 
-Custom oracle contracts for the Poppie x Euler V2 lending market (tokenized
-US equities as collateral, USDT borrowable).
+Lending against tokenized US equities on Euler V2, on Arbitrum. Borrow asset: USDC. Long only. Collateral is classed
+blue chip or long tail and held in per-asset escrow vaults; USDC is lent from four hubs (Prime, M1, M2, M3) and two
+Euler Earn vaults. Prices come from Poppie's own keeper-fed oracle through a three-state adapter (Live, Unconfirmed,
+Closed). Risk parameters are changed through a bounded risk steward, without a timelock; structural changes go
+through a 48h timelock.
 
-> **v2 (Arbitrum) is under construction on the `scale` branch.** `src/`, `test/` and
-> the deployment scripts of v1 (BSC) were removed there and live at the `v1-bsc` tag;
-> the sections below describe v1 and are rewritten before audit. For v2 see `docs/`.
+Design: `docs/ARCHITECTURE.md` (intent), `docs/V2_PLAN.md` (plan), `docs/CONTRACT_SPEC.md` (interfaces and
+behaviour), `docs/SECURITY.md` (threat model), `docs/RUNBOOKS.md`, `docs/AUDIT_SCOPE.md`. v1 (BSC) lives at the
+`v1-bsc` tag; `main` holds the audited v1 code.
 
-## v2 development
+> **Status:** initial v2 draft complete on `scale` (contracts, scripts, local/integration/fork tests). Not deployed.
+> Not audited.
+
+## Contracts
+
+| Path | Contract | Role |
+| --- | --- | --- |
+| `src/oracle/PoppieEulerOracle.sol` | `PoppieEulerOracle` | Price store and state machine: keeper pushes (ABI and 14-byte packed), class bounds, `K_CONFIRM`, `n`-push fallback, pause |
+| `src/oracle/PoppieEulerAdapter.sol` | `PoppieEulerAdapter` | Immutable Euler `IPriceOracle`: mid for liquidations (reverts unless Live), bid/ask for borrowing (haircut while Closed or Unconfirmed) |
+| `src/fee/PoppieFeeRouter.sol` | `PoppieFeeRouter` | Origination fee: borrows go to the router, which forwards net-of-fee within the same EVC batch |
+| `src/hooks/PoppieHubHook.sol` | `PoppieHubHook` | Hub hook: borrow validation, status-check gate for the fee, borrow/liquidation pauses, no flash loans |
+| `src/hooks/PoppieEscrowHook.sol` | `PoppieEscrowHook` | Escrow hook: blocks every deposit route while the asset is Closed or deposits are paused |
+| `src/wrapper/PoppieBalanceWrapper.sol` | `PoppieBalanceWrapper` | Wrapper for balance-changing and dividend-paying tokens; dividends are swept to the reserve |
+| `src/wrapper/PoppieWrapperFactory.sol` | `PoppieWrapperFactory` | One wrapper per token (CREATE2), seed deposit, dividend recipient |
+| `src/governance/PoppieRouterGovernor.sol` | `PoppieRouterGovernor` | Governor of the EulerRouter: add-only routes, wrappers and verified escrow vaults |
+| `src/steward/PoppieRiskSteward.sol` | `PoppieRiskSteward` | Bounded LTV and cap changes on hubs and escrows (holds the Governor's `setLTV`/`setCaps` roles) |
+| `src/access/` | `PoppieAccessControl`, `Roles` | Shared role base and role ids |
+| `src/interfaces/` | | Exact external interfaces (fixed by POP-5) |
+
+Euler core is used at canonical Arbitrum addresses: EVC, EVK factory and implementation, EulerRouter (deployed per
+Poppie), `GovernorAccessControl`, kink IRM factory, Euler Earn, lenses. See `test/fork/ForkBase.sol` for the
+addresses checked on chain.
+
+## Build and test
 
 ```bash
 git clone <repo> && cd <repo>
 ./scripts/init-deps.sh        # submodules, plus the few nested ones the build needs
-forge build && forge fmt --check && forge test
+forge build && forge fmt --check
+forge test --no-match-path "test/fork/**"            # local: unit, fuzz, invariant, symbolic, integration, scripts, bench
+forge test --match-path "test/fork/**" --fork-url arbitrum   # Arbitrum fork (RPC alias from foundry.toml)
+slither . --config-file slither.config.json --fail-medium
 ```
 
-Do not use `git submodule update --init --recursive`: it clones every nested dependency
-of the Euler repos (layerzero, euler-swap, pendle, ...), none of which are compiled here.
+Do not use `git submodule update --init --recursive`: it clones every nested dependency of the Euler repos, none of
+which are compiled here.
 
-### Dependencies
+| Directory | Contents |
+| --- | --- |
+| `test/unit` | Per-contract unit tests, every bound at its boundary |
+| `test/fuzz`, `test/invariant`, `test/symbolic` | Oracle model fuzzing, wrapper inflation, invariants (oracle, fee router, wrapper, steward), Halmos-style `check_` properties |
+| `test/integration` | Full stack on a local EVK (`FullStackFixture`): fees, price states, wrapper pricing, steward on real hubs, bad debt, 500-collateral scale |
+| `test/scripts` | `Deploy` + 100-asset listing + `ConfigCheck`, reproducibility, negative checks |
+| `test/fork` | Arbitrum fork: canonical Euler compatibility, Earn acceptance, 300/500-collateral lens gas, launch rehearsal, reserve Roles scope. Skips when the RPC alias cannot be resolved |
+| `test/bench` | Gas: pushes and confirms (100/250/500), steward batches (500) |
 
-`solc 0.8.24` and `evm_version = cancun` match Euler's Arbitrum deployment. Each Euler
-repository is pinned to the commit behind the contract deployed on Arbitrum (chain 42161),
-taken from the bytecode-verified `verify/manifest.json` in
-[euler-xyz/euler-interfaces](https://github.com/euler-xyz/euler-interfaces):
+Fork tests are rate-limited by a free-tier RPC: run one fork suite at a time. Never put an RPC URL or key on the
+command line; use the `arbitrum` alias.
+
+## Scripts (simulation, anvil or fork only)
+
+Agents never broadcast to a live network (`AGENTS.md`); the Arbitrum launch (POP-18) is executed by humans.
+
+| Script | Usage |
+| --- | --- |
+| `script/Deploy.s.sol` | `forge script script/Deploy.s.sol --sig "run(string)" config/deploy.<net>.json`. Deploys and wires the stack, hands `DEFAULT_ADMIN_ROLE` to the timelock and renounces the deployer; writes `deployments/<chainid>.json` |
+| `script/BuildListingBatch.s.sol` | `--sig "run(string,string,string,string,address)" <step> <name> config/assets.json deployments/<chainid>.json <safe>` with step `approvals` (MS_ADMIN timelock batch), `stage1` (deployer: wrappers and escrows) or `stage2` (MS_OPS Safe batches). Writes Safe Transaction Builder JSON to `batches/<name>/`; byte-identical for the same input |
+| `script/ConfigCheck.s.sol` | `--sig "run(string,string,string,string)" config/deploy.<net>.json deployments/<chainid>.json config/assets.json batches/<name>/1-stage1.json`. Fails on any diff, a zero fee receiver, or a role left with the deployer |
+| `script/local/LocalRehearsal.s.sol` | `--sig "run(uint256)" 100 --rpc-url http://127.0.0.1:8545` against a fresh anvil: local Euler core + deploy + listing + ConfigCheck, simulation only |
+
+Config: `config/deploy.example.json` (placeholders), `config/deploy.arbitrum.json` (canonical Euler addresses; Poppie
+role holders and the USDC/USD oracle are zero until filled in, and `Deploy` rejects zeros), `config/assets.schema.json`
+and `config/assets.example.json`. IRM curves, caps and Earn values in the configs are placeholders pending risk
+sign-off.
+
+## Dependencies
+
+`solc 0.8.24` and `evm_version = cancun` match Euler's Arbitrum deployment. Each Euler repository is pinned to the
+commit behind the contract deployed on Arbitrum (chain 42161), taken from the bytecode-verified `verify/manifest.json`
+in [euler-xyz/euler-interfaces](https://github.com/euler-xyz/euler-interfaces):
 
 | Submodule | Commit | Deployed Arbitrum contract it matches |
 |---|---|---|
@@ -31,192 +87,23 @@ taken from the bytecode-verified `verify/manifest.json` in
 | `lib/euler-vault-kit` | `422bf24` (v1.0.1) | `EVault` implementation |
 | `lib/euler-price-oracle` | `f52cb43` | `EulerRouter` source, via evk-periphery's gitlink |
 | `lib/evk-periphery` | `96b83f8` (v1.8.0) | `EulerRouterFactory`; source of the Governor |
-| `lib/euler-earn` | `b2fd6e6` (v1.0.0) | `EulerEarnFactory` (built by Euler with solc 0.8.26; not compiled here) |
-| `lib/openzeppelin-contracts` | `69c8def` | the version evk-periphery pins |
+| `lib/euler-earn` | `b2fd6e6` (v1.0.0) | `EulerEarnFactory` (built by Euler with solc 0.8.26; not compiled here; scripts use minimal interfaces) |
+| `lib/openzeppelin-contracts` | `69c8def` (v5.1.0) | the version evk-periphery pins |
 
-`GenericFactory` and `ProtocolConfig` are deployed from EVK `9e3c760`, an older commit than
-the `EVault` implementation; the code this repo compiles is the newer `422bf24`.
-
-evk-periphery `b54367e` (which adds the Governor factory) is newer but points at different
-EVC/EVK gitlinks than the deployed contracts, so `96b83f8` is kept. `optimizer_runs = 200`
-differs from Euler's 20000 on purpose: Euler's contracts are used at their canonical
-addresses, so only Poppie's own bytecode depends on this setting.
+`GenericFactory` and `ProtocolConfig` are deployed from EVK `9e3c760`, an older commit than the `EVault`
+implementation; the code this repo compiles is the newer `422bf24`. evk-periphery `b54367e` is newer but points at
+different EVC/EVK gitlinks than the deployed contracts, so `96b83f8` is kept. `optimizer_runs = 200` differs from
+Euler's 20000 on purpose: only Poppie's own bytecode depends on it. euler-price-oracle's `FixedRateOracle` needs a
+solady remapping that is not configured, so the USDC/USD oracle is a deployment input.
 
 ### Test harness
 
-`test/harness/PoppieTestBase.sol` deploys EVC, EVK factory and implementation, EulerRouter,
-an Euler Governor, mock USDC and a mock equity locally, with no fork. Extend it for EVK-level
-tests; `test/unit/HarnessSmoke.t.sol` shows a vault created through the factory and a price routed
-through the router. The Governor is `GovernorAccessControl`. Permit2 and the balance tracker are
-`address(0)`: a codeless non-zero Permit2 would make EVK's permit2 call "succeed" without moving
-tokens. Fork tests use the real Permit2.
+`test/harness/PoppieTestBase.sol` deploys EVC, EVK factory and implementation, EulerRouter, an Euler Governor, mock
+USDC and a mock equity locally, with no fork. Permit2 and the balance tracker are `address(0)` (a codeless non-zero
+Permit2 would make EVK's permit2 call "succeed" without moving tokens); fork tests use the real Permit2.
+`FullStackFixture` builds the whole Poppie stack on top and lists assets through the real two-stage flow.
 
-## Deployments
+## Branches and process
 
-| Network | Contract | Address |
-|---------|----------|---------|
-| BSC (prod) | `PoppieEulerOracle` | [`0xAE83F1A1Ea8a4e7CbcaC3551B88E22Baea25f26D`](https://bscscan.com/address/0xAE83F1A1Ea8a4e7CbcaC3551B88E22Baea25f26D) |
-| BSC (prod) | `PoppieEulerAdapter` | [`0x92dad5eEE3245c2aD9766225Ff15beDf650646ea`](https://bscscan.com/address/0x92dad5eEE3245c2aD9766225Ff15beDf650646ea) |
-| BSC (dev) | `PoppieEulerOracle` | [`0x8cCFe4A49614DE7F3204D436b254fC874De9AC76`](https://bscscan.com/address/0x8cCFe4A49614DE7F3204D436b254fC874De9AC76) |
-| BSC (dev) | `PoppieEulerAdapter` | [`0x56a730448E1c8bAd17aFA1a4c4633B9c1214288E`](https://bscscan.com/address/0x56a730448E1c8bAd17aFA1a4c4633B9c1214288E) |
-
-Dev deployment parameters:
-- `maxPriceAge`: 3600s (1 hour)
-- `anchorWindow`: 86400s (24 hours)
-- `unitOfAccount`: `address(840)` (USD), 18 decimals
-- 25 Ondo GM tokens configured (matching BSC production asset set)
-- Admin: `0xDDeFb8145fA286195f091E3D7749e22B53Bb28bF`
-- Keeper: `0x9e77D62f664cb1ebe40C0629841e69Dbf7f646e1` (GCP KMS)
-
-Both contracts verified on BSCScan and Sourcify.
-
-## Contracts
-
-| Contract | File | Purpose |
-|---|---|---|
-| `PoppieEulerOracle` | `src/PoppieEulerOracle.sol` | Master price store |
-| `PoppieEulerAdapter` | `src/PoppieEulerAdapter.sol` | Euler IPriceOracle (ERC-7726) adapter |
-| `IPoppieEulerOracle` | `src/interfaces/IPoppieEulerOracle.sol` | Oracle interface |
-| `IPriceOracle` | `src/vendor/IPriceOracle.sol` | Vendored Euler interface ([source](https://github.com/euler-xyz/euler-price-oracle/blob/abfbfc9/src/interfaces/IPriceOracle.sol)) |
-
-## Architecture
-
-```
- keeper (off-chain)                  Euler EVK vault
-   | keeperPushPrices(assets,prices)      | getQuote(inAmount, base, quote)
-   | pauseAssets(assets)                  v
-   v                                 PoppieEulerAdapter
- PoppieEulerOracle                     - converts base → unitOfAccount
-   - 18-decimal USD prices               - cached base decimals
-   - staleness guard (global + per-asset) - Math.mulDiv (512-bit safe)
-   - per-push circuit breaker             - unitOfAccount = USD, address(840)
-   - cumulative deviation cap
-   - per-asset pause (keeper-or-admin pauses, keeper-push unpauses)
-   - admin / keeper roles (two-step admin transfer)
-```
-
-### Price guards
-
-Two guards bound what the keeper can push:
-
-1. **Per-push circuit breaker** — caps single-push deviation vs last price.
-2. **Cumulative deviation cap** — caps total drift from a rolling anchor,
-   preventing a compromised keeper from ratcheting prices via many small
-   pushes.
-
-`getPrice` reverts when a stored price is older than `maxPriceAge`,
-freezing the asset in Euler until a fresh price is written. Staleness
-is configurable at two levels:
-
-- a global `maxPriceAge` set at deployment and via `setMaxPriceAge`,
-- a per-asset override via `setAssetMaxPriceAge(asset, seconds)`. A
-  non-zero per-asset value takes precedence; zero falls back to the
-  global value. This lets the operator tighten the window on liquid
-  names and loosen it on assets with legitimate update gaps without
-  affecting other assets.
-
-### Per-asset pause
-
-The keeper (or admin) can call `pauseAssets` to immediately freeze
-specific assets — `getPrice` reverts with `AssetIsPaused` and
-`keeperPushPrices` rejects pushes to paused assets. This is used when
-the Ondo halt gate signals a corporate action (split, earnings halt,
-trading suspension). Pausing zeros all price state, so the next read
-requires admin to re-seed via `adminSetPrice`.
-
-Recovery is a deliberate two-step admin-then-keeper handshake:
-
-1. Admin calls `adminSetPrice(asset, recoveryPrice)` to inject a
-   reference price (still paused).
-2. The keeper's next `keeperPushPrices` call that passes both guards
-   auto-unpauses the asset.
-
-This intentionally couples the unpause to a fresh keeper push that
-clears the per-push circuit breaker and cumulative cap, so an unpaused
-asset is always backed by a price that has passed the keeper-side
-guards rather than just an admin force-write. There is no separate
-`adminUnpause` primitive — the auditor (L-02) noted that this couples
-recovery to keeper availability, which is the accepted operational
-trade-off.
-
-### Recovery
-
-When a legitimate price move exceeds either guard, admin calls
-`adminSetPrice` to inject the post-move price (bypassing both guards,
-resetting the anchor) and unfreeze in one tx. `adminSetPrice` works on
-paused assets so admin can set the recovery price before unpausing.
-
-### Adapter
-
-**PoppieEulerAdapter** implements Euler's `IPriceOracle` (ERC-7726).
-Bases must be registered with explicit decimals. The conversion exponent
-is always non-negative (baseDec <= 18, quoteDec <= 18).
-
-**ERC-7726 status note.** ERC-7726 is currently a draft and the EIP
-explicitly says it should not be relied on in production. We implement
-it because Euler V2's vault layer consumes the interface. Integrators
-should NOT assume any cross-protocol semantic guarantees from "ERC-7726
-compliance" beyond what `PoppieEulerAdapter` documents directly. The
-underlying oracle (`PoppieEulerOracle`) is the sole source of truth and
-enforces freshness, the circuit breaker, and the cumulative-drift cap.
-
-**Base registration.** `registerBase` requires the base to be
-configured on the master oracle first (catches typos / missed
-`configureAssets` calls) and cross-checks the supplied decimals against
-the token's own `decimals()` when present. Tokens that don't implement
-`decimals()` are still accepted with the admin-supplied value.
-
-## Dependencies
-
-| Dependency | Version | Usage |
-|---|---|---|
-| `forge-std` | v1.16.1 | Test framework (submodule) |
-| `openzeppelin-contracts` | v5.6.1 | `Math.mulDiv` only (submodule) |
-| `euler-price-oracle` | — | `IPriceOracle` vendored into `src/vendor/`, submodule removed |
-
-## Build & test
-
-```bash
-git clone --recurse-submodules <repo-url>
-cd poppie-oracle
-forge build
-forge test
-```
-
-127 tests across 5 test suites:
-
-| File | Coverage |
-|---|---|
-| `PoppieEulerOracle.t.sol` | Unit: push, getPrice, staleness (global + per-asset), roles, circuit breaker, cumulative cap, two-step admin, pause/unpause, anchor rotation |
-| `PoppieEulerAdapter.t.sol` | Unit: quote conversion, decimals cross-check, registration (incl. oracle-not-ready), unregistration |
-| `PoppieEulerOracle.invariant.t.sol` | Invariants: price positivity, timestamp sanity, config persistence |
-| `PoppieEulerAdapter.symbolic.t.sol` | Symbolic/Halmos: quote math equivalence proofs |
-| `PoppieEuler.review.t.sol` | Review-oriented property tests |
-
-## Deploy scripts
-
-```bash
-# deploy oracle + adapter
-source .env
-forge script script/DeployDev.s.sol --rpc-url $BSC_RPC_URL --broadcast
-
-# configure 25 assets + register bases
-forge script script/ConfigureDev.s.sol --rpc-url $BSC_RPC_URL --broadcast
-```
-
-The dev scripts load `DEPLOYER_KEY` from the environment for
-repeatability. Audit L-03 noted this as an anti-pattern — production
-deployments should use a Foundry keystore (`cast wallet import`,
-`--account`), a hardware signer (`--ledger`, `--trezor`), or a
-KMS-backed signer instead. See the script NatSpec for context.
-
-## Static analysis & external review
-
-Analyzed with Slither, Aderyn, Mythril, and Solhint. Zero high or medium
-findings from any tool. Remaining lows are accepted design choices
-(timestamp comparisons in a price oracle, wide pragma, loop reverts for
-atomicity).
-
-External preliminary security review by **Chain Defenders** (June 2026,
-report under `audit/`) — 0 High, 0 Medium, 3 Low, 6 Informational, all
-addressed in this codebase. Security grade: 97/100.
+`main` holds audited v1 and is never touched by agents. All v2 work lands on `scale` through PRs that pass CI
+(format, build, local tests, Slither). See `AGENTS.md`.

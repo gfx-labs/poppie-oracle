@@ -2,15 +2,18 @@
 
 v2 (Arbitrum, Euler V2) design documents. v1 (BSC) lives at the `v1-bsc` tag.
 
-**Branch policy:** all v2 work happens on the `scale` branch, and every PR is a draft PR targeting `scale`. `main` matches BSC production and is not changed.
+**Branch policy:** all v2 work happens on the `scale` branch through PRs that pass CI (see `AGENTS.md` for auto-merge and the draft rule for spec deviations). `main` matches BSC production and is not changed.
 
 | Document | Role |
 | --- | --- |
 | `ARCHITECTURE.md` | Design intent. Authoritative for what the system does and why. |
 | `V2_PLAN.md` | Approved v2 build plan (§0-§9). Wins over the spec for v2 design intent; cited by section number in the Linear tickets. |
-| `OPEN_QUESTIONS.md` | Design questions and their Oct 27 2026 resolutions. |
-| `CONTRACT_SPEC.md` | Contract interfaces and invariants. Wins for interfaces; reconciled with the code before audit (POP-17). |
-| `SECURITY.md` | v1 threat model; rewritten for v2 before audit (POP-17). |
+| `OPEN_QUESTIONS.md` | Design questions and their resolutions (Oct 27 to Nov 2 2026). |
+| `CONTRACT_SPEC.md` | Contract interfaces, behaviour and implementation decisions. Wins for interfaces; reconciled with the code (POP-17); open decisions in §8. |
+| `SECURITY.md` | v2 threat model, roles and trust, residual risks. |
+| `RUNBOOKS.md` | Operational procedures: corporate actions, loss reserve, key leaks, mass restore, dividend sweep, listing. |
+| `AUDIT_SCOPE.md` | Audit tracks and in-scope files. |
+| `STATIC_ANALYSIS.md` | Slither and Aderyn triage. |
 
 ## Superseded
 

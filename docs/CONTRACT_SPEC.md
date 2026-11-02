@@ -1,6 +1,6 @@
 # Poppie on Arbitrum: Smart Contract Specification
 
-*Status: third draft, Oct 28 2026. Interfaces fixed by POP-5: the Solidity files in `src/interfaces/` are the exact signatures, and this spec describes their behaviour. Companion to the Hub Architecture & Governance Plan and the Problems doc. If they conflict, the plan wins for design intent; this spec wins for interfaces. Decisions taken when the interfaces landed are listed in `docs/OPEN_QUESTIONS.md` (Q13 to Q23).*
+*Status: reconciled with the code on Nov 2 2026 (POP-17), after the initial v2 draft (POP-5 to POP-16). The Solidity files in `src/interfaces/` are the exact signatures; this spec describes their behaviour and the implementation decisions. Companion to `docs/ARCHITECTURE.md` (which wins for design intent; this spec wins for interfaces). Decisions: `docs/OPEN_QUESTIONS.md` (Q1 to Q23 before implementation, Q24 onwards during it). Open decisions: section 8.*
 
 ## 1. Scope
 
@@ -12,9 +12,11 @@ This spec covers everything Poppie deploys or configures on Arbitrum. Euler core
 | Adapted from `gfx-labs/poppie-oracle` | `PoppieEulerOracle` v2, `PoppieEulerAdapter` v2 (three-state) | Modify existing code |
 | New | `PoppieFeeRouter`, `PoppieHubHook`, `PoppieEscrowHook`, `PoppieRiskSteward`, `PoppieRouterGovernor`, `PoppieBalanceWrapper`, `PoppieWrapperFactory` | New code |
 
-Estimated custom Solidity: 1,500–2,500 lines (the estimate predates the wrapper, the factory and the steward override). The highest-risk components are the three-state adapter and the fee router with its hub hook.
+Custom Solidity: about 1,450 nSLOC of implementation (`docs/AUDIT_SCOPE.md`). The highest-risk components are the three-state adapter, the fee router with its hub hook, and the steward's ramp handling.
 
-**EVK constraints this design relies on** (checked against `euler-vault-kit`; re-verify against the pinned Arbitrum version in POP-5 and POP-12):
+The USDC/USD fixed-rate oracle is a deployment input (`usdcUsdOracle`): euler-price-oracle's `FixedRateOracle` needs a solady remapping this repo does not configure, so it is deployed separately or an existing one is used.
+
+**EVK constraints this design relies on** (checked against `euler-vault-kit`, and re-verified on the canonical Arbitrum implementation by the fork tests in `test/fork/EulerCompat.t.sol`, POP-12):
 
 - Each vault has exactly one hook target and a bitmask of hooked operations (`setHookConfig(address, uint32)`). All hook logic for one vault must live in one contract.
 - The hook is called before the operation, with the original calldata plus the authenticated caller appended (20 bytes).
@@ -30,29 +32,30 @@ Estimated custom Solidity: 1,500–2,500 lines (the estimate predates the wrappe
 
 | Item | Count | Configuration |
 | --- | --- | --- |
-| Hubs (USDC borrow vaults) | 4: Prime, M1, M2, M3 | Oracle = EulerRouter; unit of account = USD (`0x…0348`); IRM per hub; `CFG_DONT_SOCIALIZE_DEBT` set; hook target = `PoppieHubHook`; **fee receiver set and non-zero** (it receives both the interest fee and the origination fee) |
-| Escrow vaults | 1 per asset | Non-upgradeable factory proxy; governed; borrowing disabled (borrow cap raw 1, never raw 0); hook target = `PoppieEscrowHook`; seed deposit at creation; created by the deployer key (see Listing flow) |
+| Hubs (USDC borrow vaults) | 4: Prime, M1, M2, M3 | **Upgradeable** factory proxies (they follow Euler's EVault implementation); oracle = EulerRouter; unit of account = USD (`0x…0348`); IRM per hub; interest fee; max liquidation discount; `CFG_DONT_SOCIALIZE_DEBT` set; hook target = `PoppieHubHook`; **fee receiver set and non-zero** (it receives both the interest fee and the origination fee); initial caps; `governorAdmin` = the Poppie Governor; registered in the hub hook and the steward (band, cap ceilings); origination fee set in the fee router |
+| Escrow vaults | 1 per asset | Non-upgradeable factory proxy; no oracle and no unit of account; governed by the Poppie Governor; hook target = `PoppieEscrowHook`; seed deposit at creation (shares stay with the deployer key); created by the deployer key (see Listing flow). Caps are written by `steward.list`: borrow cap raw 1 (never raw 0), supply cap 25% of the ceiling. Between stage 1 and stage 2 the vault is closed to deposits (the oracle does not list the token yet, so the hook reverts) |
 | Balance wrappers | 1 per balance-changing or dividend-paying token | Created by `PoppieWrapperFactory`; immutable; the escrow vault's `asset()` is the wrapper |
 | Wrapper factory | 1 | Admin `MS_ADMIN` via timelock (sets the dividend recipient = the reserve Safe) |
-| Role bootstrap | — | Every Poppie contract takes an `initialAdmin`. The deploy script passes the deployer key, grants all roles and does one-off setup (hub registration, hook ↔ router wiring), then grants `DEFAULT_ADMIN_ROLE` to the timelock and renounces its own roles. The configuration check fails if the deployer still holds any role |
+| Role bootstrap | — | Every Poppie contract takes an `initialAdmin`. The deploy script passes the deployer key, grants all roles (taking `MS_OPS` on the fee router and steward temporarily for setup) and does one-off setup (hub registration, hook ↔ router wiring, fees, cap ceilings), then grants `DEFAULT_ADMIN_ROLE` to the timelock and renounces every role. On the Euler Governor the timelock gets `DEFAULT_ADMIN_ROLE` **and the wildcard role** (any vault governance call), and the steward gets the `setLTV` and `setCaps` selector roles. The configuration check fails if the deployer still holds any role. Exceptions handled at launch: Earn ownership (offered to the timelock, which must accept) and escrow seed shares (section 8) |
 | EulerRouter | 1 | Governor = `PoppieRouterGovernor`; route `(token, USD)` → `PoppieEulerAdapter`; `(USDC, USD)` → fixed-rate oracle; each wrapper registered as a resolved vault (wrapper → token); each escrow vault registered as a resolved vault (escrow → wrapper or token) |
-| IRMs | 1 per hub | Kink IRM with a rate floor (proposed: 2/3/4/5%) |
-| Euler Earn | 2: Prime Earn, Yield Earn | Curator `MS_OPS`, allocator `K_ALLOC` |
-| Timelock | 1 | 48h; proposer `MS_ADMIN`; canceller `MS_OPS` |
+| IRMs | 1 per hub | EVK `IRMLinearKink` from the canonical kink IRM factory (or deployed directly where there is none); `baseRate` is the floor (proposed: 2/3/4/5%). Curves in `config/` are placeholders pending risk sign-off |
+| Euler Earn | 2: Prime Earn (Prime hub), Yield Earn (all four hubs) | Created through the canonical Earn factory with Earn timelock 0, initial caps accepted and supply queue set, then the Earn timelock is raised (placeholder 1 day); curator `MS_OPS`, allocator `K_ALLOC`; ownership offered to the Poppie timelock (Ownable2Step). Earn accepts hooked hubs (verified on the Arbitrum fork) |
+| Timelock | 1 | OZ `TimelockController`, 48h (the script rejects less); proposer and executor `MS_ADMIN` (OZ also makes proposers cancellers); canceller `MS_OPS`; self-administered (the deployer's admin is renounced) |
 | Loss reserve | 1 Safe + Roles module | Owner `MS_OPS`; `K_RESERVE` role (section 3.8); also receives swept wrapper dividends |
 | Deployer key | 1 (KMS) | Creates wrappers and escrow vaults and pays their seed deposits; holds no role after setup. Flagged for review (POP-19) |
 
 **Listing rules:** blue-chip escrow vaults are LTV-listed in every hub. Long-tail escrow vaults are listed in exactly one hub, the one for their band.
 
-**Listing flow (two stages):**
-1. *Deployer key:* deploy the wrapper if the token needs one, create the escrow vault, make the seed deposits, set the hook config, hand governance to the Governor. This stage needs no trust: the router governor verifies the result.
-2. *`MS_OPS` Safe batch:* `oracle.listAssets`, `routerGovernor.addWrapper` (wrapped tokens only), `addRoute`, `addResolvedVault`, then `steward.list`.
+**Listing flow** (`script/BuildListingBatch.s.sol`; operational steps in `docs/RUNBOOKS.md` §6):
+0. *`MS_ADMIN` via the timelock (≥ 48h ahead):* `routerGovernor.setApprovedToken(token, true)` for each token (`scheduleBatch`, then `executeBatch`).
+1. *Deployer key:* deploy the wrapper if the token needs one (balance-changing and distributing; the deployer pays 2 × the seed: the wrapper's own seed, then wrapper shares for the escrow seed), create the escrow vault, open its hooks (a fresh EVK vault has every operation hooked with no target), make the seed deposit, set the hook config, hand governance to the Governor. This stage needs no trust: the router governor verifies the result.
+2. *`MS_OPS` Safe batches:* `oracle.listAssets`, `routerGovernor.addWrapper` (wrapped tokens only), `addRoute`, `addResolvedVault`, `steward.setCapCeiling` (token amounts converted to wrapper shares for wrapped assets), then `steward.list`. Assets are packed into batches under 20M estimated gas each, since a Transaction Builder batch executes as one transaction. The price class equals the risk class at listing.
 
 ## 3. Contract specifications
 
 ### 3.1 `PoppieEulerOracle` v2
 
-Price store and state machine. Extends the BSC oracle. **Changes from BSC:** it keeps the last confirmed price through pauses; it adds class bounds, the unconfirmed state, `K_CONFIRM` and the `n`-push fallback; it drops the cumulative anchor cap, since `K_PRICE` is trusted; and it lists tokens with compact ids so a full refresh fits in few bytes.
+Price store and state machine. Replaces the BSC oracle. **Changes from BSC:** it keeps the last confirmed price through pauses; it adds class bounds, the unconfirmed state, `K_CONFIRM` and the `n`-push fallback; it drops the cumulative anchor cap, since `K_PRICE` is trusted; and it lists tokens with compact ids so a full refresh fits in few bytes.
 
 **Storage per asset** (two slots)
 
@@ -63,7 +66,7 @@ Price store and state machine. Extends the BSC oracle. **Changes from BSC:** it 
 | `pendingPrice`, `pendingTs` | Latest pushed unconfirmed price and its time. Written only while a move is pending |
 | `paused` | Admin or keeper pause |
 | `priceClass` | Blue chip, M1, M2 or M3. Sets `h` (the haircut, which is also the reopen bound). Separate from the steward's risk class |
-| `decimals`, `listed`, `id` | Decimals of the underlying token (≤ 18), listing flag, and a `uint16` id assigned at listing |
+| `decimals`, `listed`, `id` | Decimals of the underlying token (≤ 18), listing flag, and a `uint16` id assigned at listing (sequential from 1; id 0 is never assigned and is rejected by the packed push; at most 65,535 assets) |
 
 Global (one slot): `maxPriceAge` (1h), `n` (fallback push count, ≥ 2), `minPendingSpacing`, and `hBps` for each of the four price classes.
 
@@ -75,20 +78,20 @@ Global (one slot): `maxPriceAge` (1h), `n` (fallback push count, ≥ 2), `minPen
 | Unconfirmed | Not closed, and `pendingCount > 0` |
 | Live | Otherwise |
 
-**Listing: `listAssets(tokens[], classes[])`**, role `MS_OPS`. Add-only. Lists **underlying tokens only, never wrappers.** Assigns each token a `uint16` id, reads its `decimals()` (must be ≤ 18) and sets its price class. An asset has no price until the first confirmation.
+**Listing: `listAssets(tokens[], classes[])`**, role `MS_OPS`. Add-only. Lists **underlying tokens only, never wrappers** (a listing rule, not checked on chain). Assigns each token a `uint16` id, reads its `decimals()` (must be ≤ 18) and sets its price class. An asset has no price until the first confirmation.
 
 **`keeperPushPrices(assets[], prices[])`**, role `K_PRICE`. For each asset, with `p` the pushed price and `L = lastPrice`:
 
 1. If `L == 0` (no confirmed price yet): set `pendingPrice = p`, `pendingTs = now`, `pendingCount = 1`. Only `confirm` can take it live; the `n`-push fallback is disabled while `L == 0`.
 2. Else if `|p − L| ≤ h × L`: set `lastPrice = p`, `lastPriceTs = now`, clear the pending fields. **→ Live**
 3. Otherwise, with `dir = sign(p − L)`:
-    - If `pendingCount > 0` and `now < pendingTs + minPendingSpacing`: the push does not count (default: it is ignored for this asset and changes no pending state; POP-6 may refine).
+    - If `pendingCount > 0` and `now < pendingTs + minPendingSpacing`: the push is ignored for this asset, in either direction: no state change, no event, `pendingTs` not refreshed.
     - Else if `pendingCount > 0` and `dir == pendingDir`: increment `pendingCount`.
     - Else: `pendingCount = 1`, `pendingDir = dir`.
     - Set `pendingPrice = p`, `pendingTs = now`.
     - If `pendingCount ≥ n`: promote. Set `lastPrice = p`, `lastPriceTs = now`, clear pending. **→ Live**
 
-A push to a paused asset reverts. Duplicate entries for one asset in a single batch, or several pushes in one block, cannot promote a price, because of `minPendingSpacing`.
+A push to a paused or unlisted asset, or a zero price, reverts the whole batch (the keeper filters paused assets out). Duplicate entries for one asset in a single batch, or several pushes in one block, cannot promote a price, because of `minPendingSpacing`.
 
 **`keeperPushPacked(bytes)`**, role `K_PRICE`. The same logic through the same internal function. Each entry is 14 bytes: `uint16 id | uint96 price` (18-decimal USD), big-endian, no length prefix. A full 500-asset refresh is about 7 KB instead of about 32 KB. The ABI push and storage use `uint128` prices; the packed format tops out at about $7.9e10 per token, so a price above that can only be pushed through the ABI path (harmless).
 
@@ -96,7 +99,7 @@ A push to a paused asset reverts. Duplicate entries for one asset in a single ba
 - Requires the asset not paused, `pendingCount > 0`, `price == pendingPrice`, and `now − pendingTs ≤ maxPriceAge`.
 - Promotes the pending price to live.
 
-**`confirmBatch(assets[], prices[])`**, role `K_CONFIRM`. Applies `confirm` to each entry. Default: all-or-nothing; one stale or changed entry reverts the batch.
+**`confirmBatch(assets[], prices[])`**, role `K_CONFIRM`. Applies `confirm` to each entry. All-or-nothing: one stale or changed entry reverts the batch.
 
 **`pauseAssets(assets[])`**, roles `K_PRICE` or `MS_OPS`. Sets `paused`. Keeps `lastPrice`.
 
@@ -110,7 +113,7 @@ A push to a paused asset reverts. Duplicate entries for one asset in a single ba
 
 **`PriceState` ordering:** `Closed = 0`, `Unconfirmed`, `Live`, so an unset or default state fails closed.
 
-**Views:** `state(asset)`, `getAssetData(asset)`, `getQuoteData(asset)` (state, `L`, `P`, `h` and decimals in one call), and batch views for monitoring. The adapter and `PoppieEscrowHook` use these.
+**Views:** `state(asset)`, `getAssetData(asset)` (a zero record for unlisted assets), `getQuoteData(asset)` (state, `L`, `P`, `h` and decimals in one call), `getStates`, `getQuoteDataBatch`, `isListed`, `assetId`, `assetById`, `assetCount`, `maxPriceAge`, `n`, `minPendingSpacing`, `haircutBps`. `state`, `getQuoteData` and `assetId` revert `AssetNotListed` for an unlisted asset. The adapter and `PoppieEscrowHook` use these.
 
 ### 3.2 `PoppieEulerAdapter` v2 (three-state)
 
@@ -212,10 +215,10 @@ Holds the Governor roles for `setLTV` on hubs and `setCaps` on hubs and escrow v
 | `lowerCaps([{vault, supply, borrow}])` | `K_TIGHTEN` | Escrow vaults or hubs. Down to current usage; below that needs `MS_OPS` (`overrideCaps`) |
 | `raiseLTV([{hub, asset, borrow, liq}])` | `K_LOOSEN` | ≤ 3 pts per change; once per asset per 7 days; ≤ class ceiling; gap rule |
 | `raiseCaps([{vault, supply, borrow}])` | `K_LOOSEN` | Escrow vaults or hubs. Up to the vault's cap ceiling, with **no rate limit** |
-| `promote(asset)` | `K_LOOSEN` | Lists a newly promoted blue chip in every stored hub (`hubs()`), in one call, at launch limits. All-or-nothing |
-| `demote(asset, newClass, bandHub)` | `K_TIGHTEN` | `bandHub` must be a registered hub in band `newClass` (several hubs may share a band, so it is passed, not derived). In hubs the asset is leaving: borrow LTV to 0 at once; liquidation LTV ramps to 0 over at least (cut ÷ 5 pts) × 24h. In the band hub it stays in: borrow LTV drops to the new class ceiling at once; liquidation LTV ramps down over at least (cut ÷ 5 pts) × 24h, never under 72h. Own rate limit: ≤ 3 per rolling 7 days. `MS_OPS` sets the matching oracle price class in the same batch if needed |
+| `promote(asset)` | `K_LOOSEN` | Lists a newly promoted blue chip in every stored hub (`hubs()`) other than its band hub, in one call, at blue-chip launch LTVs; the band hub's LTVs and the escrow caps are kept. A hub still ramping down from an earlier demotion keeps ramping (never an instant cut). All-or-nothing |
+| `demote(asset, newClass, bandHub)` | `K_TIGHTEN` | `bandHub` must be a registered hub in band `newClass` (several hubs may share a band, so it is passed, not derived). In hubs the asset is leaving: borrow LTV to 0 at once; liquidation LTV ramps to 0 over exactly (cut ÷ 5 pts) × 24h, rounded up to the second (or the remaining ramp, if longer). In the band hub it stays in: borrow LTV drops to the new class ceiling at once; liquidation LTV ramps down to the new class ceiling over the same, never under 72h. Only blue chips can be demoted, to a long-tail class. Own rate limit: ≤ 3 per rolling 7 days (global). `MS_OPS` sets the matching oracle price class in the same batch if needed |
 | `addHub(hub, band)` | `DEFAULT_ADMIN_ROLE` | Registers a hub and its band (`BlueChip` for Prime) in the stored hub list. Mirrors the hub hook's `registerHub`; at launch done by the deploy script |
-| `list([{asset, escrow, hub, class}])` | `MS_OPS` | New listing: LTV ≤ 50% of the class ceiling, supply cap ≤ 25% of the escrow's cap ceiling (which must be set first) |
+| `list([{asset, escrow, hub, class}])` | `MS_OPS` | New listing at launch limits: LTVs exactly 50% of the class ceilings (the gap rule does not apply at launch), supply cap 25% of the escrow's cap ceiling rounded down (the ceiling must be set first), borrow cap raw 1 |
 | `setCapCeiling([{vault, supply, borrow}])` | `MS_OPS` | Sets, raises or lowers the cap ceilings of an escrow vault or hub, instantly. Raw AmountCap, never raw 0. Accepts vaults not yet listed. Lowering a ceiling does not lower current caps. The borrow ceiling is unused for escrows |
 | `overrideLTV([{hub, asset, borrow}])` | `MS_OPS` | Sets the borrow LTV anywhere up to the class ceiling, without the weekly limit. The borrow LTV cannot exceed the liquidation LTV, and the gap rule applies. Does not raise the liquidation LTV |
 | `overrideCaps([{vault, supply, borrow}])` | `MS_OPS` | Sets caps anywhere up to the cap ceilings, without a rate limit |
@@ -226,6 +229,20 @@ Holds the Governor roles for `setLTV` on hubs and `setCaps` on hubs and escrow v
 - **Chain of cuts:** a chain starts when a liquidation-LTV cut begins while no ramp is active. The steward records the liquidation LTV at that moment and keeps it until the ramp ends. Ramp cancel restores that value.
 - **Ramps are never shortened:** every `setLTV` call passes the remaining ramp time.
 - **Cap comparisons** use resolved AmountCap amounts. A cap written to EVK is rounded down after encoding and is never raw 0.
+
+**Implementation decisions (POP-11, settled with the owner on Nov 2 2026):**
+- Liquidation-LTV cut steps (5 pts, or 15 pts on the emergency path) are measured from the **current ramped** value; the new value must be below the current target. The emergency path has no rate limit and does not use up `K_TIGHTEN`'s 24h limit.
+- A liquidation-LTV cut lowers the borrow LTV to `newLiquidationLtv − gap` where needed, in the same `setLTV` call.
+- The gap rule is enforced whenever a borrow LTV is raised (`raiseLTV`, `overrideLTV`); cuts clamp instead; `list`, `promote` and `demote` set fixed values.
+- `raiseLTV` limits each of the two values to +3 pts (the liquidation step from the ramped value). Raising the liquidation LTV during a ramp is allowed: instant, it ends the chain and clears the baseline. A borrow-only raise keeps the ramp. One raise per **asset** per 7 days across all hubs.
+- `overrideLTV` can lower or raise the borrow LTV, up to the class ceiling and the **target** liquidation LTV; it keeps any ramp.
+- `cancelRamp` reverts `NoActiveRamp` unless the asset is ramping with a recorded baseline above the target. It restores `min(baseline, current class ceiling)`: instantly if that is at or above the ramped value, otherwise the ramp keeps its remaining time and stops there (never an instant cut). A long-tail entry may name any hub, so demotion ramps in hubs the asset is leaving can be cancelled (section 8).
+- Blue-chip entries apply to every registered hub where the escrow is a recognised collateral. Long-tail entries must name the band hub (`WrongBand`), except `cancelRamp`.
+- `lowerCaps` checks usage only for the cap being lowered (supply against `totalAssets`, a hub's borrow against `totalBorrows`) and needs no ceiling; `raiseCaps` and `overrideCaps` need the vault's ceiling. `setCapCeiling` requires both ceilings non-zero, even for escrows (whose borrow ceiling is unused; the scripts pass raw 1).
+- `addHub` reverts `WrongBand(hub, band)` for a hub already registered; hubs cannot be removed.
+- `list` accepts an escrow holding the token, or an ERC-4626 whose `asset()` is the token (the wrapper); otherwise `UnknownVault`.
+- EVK writes go through the Euler `GovernorAccessControl` (target appended to the calldata). LTV state is read from `LTVFull` on every call. Mutating functions are `nonReentrant` (transient guard).
+- Batch gas (measured, `test/bench/StewardGas.t.sol`): 500-entry `overrideLTV` 16.6M, `lowerLiquidationLTV` 29.1M, `cancelRamp` 19.1M, `raiseCaps` 17.8M; a blue-chip `list` costs about 330k per asset (four hubs), so ≤ 80 per call.
 - **Issuer and underlying-stock exposure caps are enforced off-chain only**, not in the steward.
 - **Loosening in rollout phase 1:** `K_LOOSEN` is held by the `MS_OPS` Safe. In phase 2 it moves to a KMS key through the timelock. There is no on-chain switch.
 
@@ -241,12 +258,14 @@ The governor of the EulerRouter. All three add functions are add-only.
 | `setApprovedToken(token, bool)` | `MS_ADMIN` via timelock | Approved token list |
 | `execute(call)` | `MS_ADMIN` via timelock | Any other router change, including overwrites |
 
+Interpretations (POP-10): "route must be unset" is `router.getConfiguredOracle(token, USD) == 0`; a wrapper is "registered" when it is a factory wrapper already registered in the router as a resolved vault (through `addWrapper`); the hook check is an exact match on `(PoppieEscrowHook, ESCROW_HOOKED_OPS)`; `setApprovedToken` rejects the zero address, and removing approval does not unwind existing routes. Escrow caps, LTVs, flags, IRM and fee receiver are not checked on chain; `ConfigCheck` covers them.
+
 ### 3.8 Loss reserve (configuration, no code)
 
 - A Safe with the Roles module. `K_RESERVE` may only:
     - call `USDC.approve(hub, amount)` for the four hubs;
     - call `hub.repay(amount, receiver)`.
-- Per-call and daily allowances are set in the Roles module.
+- Per-call and daily allowances are set in the Roles module (an allowance on the `approve` amount). Verified on an Arbitrum fork with Safe v1.4.1 and Zodiac Roles v2 (`test/fork/LaunchRehearsal.t.sol`): approving a non-hub, approving above the allowance, transfers, other hub functions and non-members are rejected.
 - Withdrawals from the reserve and role changes: `MS_OPS` only.
 - Loss-sharing (`CFG_DONT_SOCIALIZE_DEBT`) is turned back on by `MS_ADMIN` via timelock, for the case where bad debt exceeds the reserve.
 - The reserve is also the recipient of swept wrapper dividends (section 3.9). It may then hold tokens other than USDC, which `MS_OPS` converts to USDC or Prime hub shares.
@@ -258,7 +277,7 @@ Euler doesn't support tokens whose balance changes without a transfer, and an es
 **`PoppieBalanceWrapper`**: immutable, ERC-4626-style, one per token.
 - Shares never change in number on their own. `convertToAssets` follows the wrapper's own balance of the token, so positive and negative rebases are shared pro rata.
 - Deposits mint shares from the balance actually received.
-- A seed deposit at creation plus a virtual share offset prevent first-depositor inflation. Seed shares are locked permanently.
+- A seed deposit at creation plus a virtual share offset of 6 decimals prevent first-depositor inflation (so the wrapper has the token's decimals + 6; escrow caps for wrapped assets are in wrapper units). Seed shares are held by the factory and locked permanently. A deposit worth less than one share reverts `ZeroSharesMinted`; `mint` mints at most the shares the received amount buys.
 - **No skim:** tokens donated to the wrapper raise the value of every share.
 - **`sweep(token)`**: permissionless. It rejects the wrapper's own underlying token, and sends the whole balance of any other token to the recipient stored in the factory (the reserve Safe). This is how dividends paid in stablecoins reach the reserve. Depositors forgo dividends while deposited, disclosed at deposit. Flagged for review (POP-20).
 - The wrapper has no other admin function.
@@ -267,7 +286,7 @@ Euler doesn't support tokens whose balance changes without a transfer, and an es
 - `createWrapper(token, seedAmount)` creates a wrapper, pulling the seed deposit from the caller (a deployer key; flagged for review, POP-19). The only check on the seed is `seedAmount > 0`: the virtual share offset already makes first-depositor inflation unprofitable, and a wrapper is identical whoever creates it, so there is no per-token minimum to administer.
 - Keeps `isWrapper[wrapper]` and `wrapperOf[token]`, and allows one wrapper per token.
 - Holds the dividend recipient, which only `MS_ADMIN` can change, via the timelock.
-- Creation is callable by any address (default; confirm in POP-8), because the router governor verifies what gets registered.
+- Creation is callable by any address, because the router governor verifies what gets registered. Wrappers are created with CREATE2 (salt = the token).
 
 ## 4. Roles
 
@@ -283,7 +302,7 @@ Euler doesn't support tokens whose balance changes without a transfer, and an es
 | `MS_OPS` | Safe 3-of-5 | Unpause (assets, and early end of any `K_GUARD` or liquidation pause), listing, fees, oracle risk params (price class, `h`, `maxPriceAge`, `n`, `minPendingSpacing`), liquidation pause (≤ 6h per call, repeatable), emergency LTV cuts, steward override, ramp cancel and cap ceilings (escrows and hubs), Earn caps, reserve withdrawals, timelock cancel, key revocation |
 | `MS_ADMIN` | Safe 4-of-7 | Everything structural, via the 48h timelock, including role grants, the dividend recipient and hub registration after launch |
 
-`MS_OPS` can revoke any `K_*` role but cannot grant one. The timelock is the only steady-state holder of `DEFAULT_ADMIN_ROLE`; at launch the deployer holds it briefly (see the role bootstrap row in section 2). The off-chain rule for `K_CONFIRM` (detect, verify independently, confirm or escalate, log) is specified in the plan. It isn't enforceable on-chain.
+`MS_OPS` can revoke any `K_*` role on a Poppie contract but cannot grant one. `K_ALLOC` lives in Euler Earn (`setIsAllocator`, Earn owner = the timelock) and `K_RESERVE` in the Roles module (owner `MS_OPS`), so their revocation follows those contracts. The timelock is the only steady-state holder of `DEFAULT_ADMIN_ROLE`; at launch the deployer holds it briefly (see the role bootstrap row in section 2). The off-chain rule for `K_CONFIRM` (detect, verify independently, confirm or escalate, log) is specified in the plan. It isn't enforceable on-chain.
 
 ## 5. Parameters (proposed starting values)
 
@@ -313,8 +332,8 @@ Euler doesn't support tokens whose balance changes without a transfer, and an es
 | Wrapper | positive and negative rebases are shared pro rata; no first-depositor inflation (including with a 1-wei seed); a zero seed reverts; the share count is unaffected by rebases; `sweep` never moves the underlying token and sends only to the factory's recipient; pricing works through escrow → wrapper → token |
 | Steward | every bound and rate limit, at its boundary; `promote` is all-or-nothing; ramps are never shortened; stacked cuts followed by ramp cancel restore the original baseline; the override and ramp cancel work in batches of 500; hub caps obey the same ceiling rules as escrow caps; `demote` rejects a band hub of the wrong band; the removed limits no longer apply |
 | Router governor | add-only; non-approved tokens, non-factory wrappers, upgradeable or misconfigured escrow vaults are rejected |
-| Configuration | diff every hub and escrow vault against the intended parameters before and after each listing batch; fail on a zero fee receiver; fail if the deployer holds any role after bootstrap; hook and router point at each other |
-| Scale | gas for `setLTV`, `LTVList()` and the lens with 300+ collaterals in one hub; pushes of 100, 250 and 500 assets in both formats; a 500-asset `confirmBatch` |
+| Configuration | `script/ConfigCheck.s.sol`: timelock and Governor roles, every role holder, wiring (hooks, router, router governor, adapter, wrapper factory), every hub (oracle, unit of account, hook, flags, IRM, interest fee, discount, fee receiver, caps and ceilings, fee bps, band) and every listed escrow (asset, no oracle / unit of account, governor, hook, non-upgradeable, flags, IRM, fee receiver, borrow cap raw 1, supply cap ≤ ceiling, steward record, LTVs per hub), before and after each batch; fails on a zero fee receiver or any deployer role; hook and router point at each other. Not checked: Earn `owner` (only `pendingOwner`), escrow seed share custody |
+| Scale | gas for `setLTV`, `LTVList()` and the lens with 300+ collaterals in one hub; pushes of 100, 250 and 500 assets in both formats; a 500-asset `confirmBatch`. Measured on the Arbitrum fork: 300 collaterals: `LTVList` 209k, borrow with 10 collaterals 478k, AccountLens 1.08M, `VaultLens.getVaultInfoFull` 27.1M; 500: `LTVList` 430k, borrow 481k, AccountLens 1.09M, `getVaultInfoFull` 51.3M (above the common 50M `eth_call` cap) |
 
 ## 7. Build order
 
@@ -329,12 +348,22 @@ Euler doesn't support tokens whose balance changes without a transfer, and an es
 9. Spec and README reconciliation, static analysis
 10. Audits: contracts, off-chain systems, economic review
 
-Steps 2 to 6 can run in parallel once step 1 has landed.
+Steps 1 to 9 are done (POP-5 to POP-17); step 10 is next.
 
 ## 8. Open items
 
-- Whether `confirmBatch` should skip stale entries instead of reverting the whole batch.
-- Whether a push that arrives inside `minPendingSpacing` should refresh `pendingPrice` (default: ignored).
-- Seed deposit funding (POP-19) and dividend handling (POP-20) are flagged for review before launch.
-- No cumulative per-day price cap is planned, given the trusted keeper. Revisit if the audit asks for one.
-- No extra grace period after Arbitrum sequencer downtime: staleness closes the markets as usual.
+**Settled by the code (closed):** `confirmBatch` is all-or-nothing; a push inside `minPendingSpacing` is ignored; hub-level caps follow the escrow rules (Q16); `MS_OPS` ends `K_GUARD` pauses early (Q19).
+
+**Decided not to build:** no cumulative per-day price cap (the keeper is trusted; revisit if the audit asks); no extra grace period after Arbitrum sequencer downtime (staleness closes the markets).
+
+**Flagged for review before launch:** seed deposit funding (POP-19: the deployer pays, 2 × for wrapped assets; escrow seed shares stay with the deployer and could be withdrawn; wrapper seed shares are locked in the factory) and dividend handling (POP-20).
+
+**Open decisions found during implementation (need an owner decision):**
+1. **M2 / M3 ceilings vs the gap rule.** M2 45/52 and M3 35/42 have a 7-pt gap, below the 8-pt long-tail gap, so the reachable borrow LTV at the liquidation ceiling is 44 / 34; demoting a blue chip at 70/75 into M2 or M3 lands exactly on the ceilings, inside the gap. Change the ceilings or exempt them.
+2. **Ramp cancel in a hub a demoted asset is leaving** restores a liquidation LTV (up to the new class ceiling, borrow stays 0), leaving a long-tail asset as collateral outside its band hub, against the listing rule in section 2. Restrict `cancelRamp` to the band hub for long-tail assets, or accept.
+3. **Hubs added after launch** do not receive existing blue chips, and the steward cannot add them (`list` and `promote` reject an already-listed blue chip); only a timelocked Governor call can. Add a backfill path or accept.
+4. **Earn ownership** stays with the deployer until the timelock accepts it (a 48h action after launch); add the accept step to the launch runbook and to `ConfigCheck`.
+5. **Escrow seed shares** stay with the deployer key (see POP-19).
+6. **USDC/USD oracle**: choose the fixed-rate adapter for `config/deploy.arbitrum.json`.
+
+**Operational residual risk:** a split that lands while the asset is Closed on its pre-split price overvalues the bid by `2 × (1 − h)` until the keeper pushes (`docs/RUNBOOKS.md` §1).
