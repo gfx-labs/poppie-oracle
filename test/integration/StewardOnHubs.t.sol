@@ -169,7 +169,7 @@ contract StewardOnHubsIntegrationTest is FullStackFixture {
         ltEscrow.deposit(100e18, d);
     }
 
-    function test_escrowBorrowCapStaysZero() public {
+    function test_escrowBorrowCapStaysZero() public view {
         (, uint16 borrowCap) = escrow.caps();
         assertEq(borrowCap, 1);
     }
