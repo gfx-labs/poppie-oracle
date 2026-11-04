@@ -8,6 +8,8 @@
 - **Dividends the protocol must claim, or that arrive as stablecoins, need one small new contract.** Neither an EVK escrow vault nor an unmodified OpenZeppelin `ERC4626` can recover tokens sent to it. A minimal dividend-capture wrapper (about 100 lines) lets the protocol be the holder of record, claim and sweep dividends, and count them as revenue.
 - **The main operational risk is a wrong price push at a split.** The oracle cannot tell a split from a market move. A wrong 2-for-1 push passes the 5000 bps breaker used in the dev scripts, and moves above +100% need `adminSetPrice`. This is handled off-chain by the corporate-action engine.
 - **The wrapper share must be the oracle base; never route through to the rebasing token.** Through the stock EulerRouter, pricing the wrapper share directly keeps collateral value continuous when a multiplier activates. Resolving the wrapper to the rebasing token instead (the pattern xStocks' docs describe: `convertToAssets` × token price) overvalues collateral 2× at a 2:1 split until the keeper pushes, and a 3:1 split cannot be fixed by the keeper at all (PATH-2).
+- **xStocks contracts fit; the market doesn't exist yet (XS-1 to XS-6).** Fork tests on the real AAPLx token and V2 wrapper confirm the pricing path, including a split. But over 99% of Arbitrum supply of the major names is Backed inventory, the V2 wrappers are unused and there are no Uniswap v3 USDC pools, so liquidators have no exit today. On-chain, the only exit is Backed's own inventory through its allowlisted `AtomicSwap` RFQ, which CoW solvers also use; sales so far are small and never at weekends (XS-7). The multiplier key has no on-chain bound on size or notice (XS-9). Corporate-action payouts to wrapper holders are unconfirmed (XS-8).
+- **Scheduled issuer pauses need one small new contract, not a v1 change (PAUSE-1).** An EVK hook on each escrow can freeze deposits and withdrawals during known windows while leaving liquidations open.
 - **Listability:** Ondo's docs do not list Arbitrum as a supported chain. Most of the Arbitrum set may need to come from xStocks and Dinari.
 
 Build health: the default (audited) profile is unchanged. `forge build` passes (adapter 3,737 B runtime, oracle 7,385 B), `forge test` passes 121/121, and slither reports only `block.timestamp` comparisons.
@@ -29,6 +31,14 @@ git -C lib/euler-price-oracle submodule update --init --depth 1 lib/ethereum-vau
 
 All 43 tests pass; the two fuzz tests also pass at 10,000 runs.
 
+A sixth suite, `eval/fork/XStocksArbFork.t.sol`, forks Arbitrum locally (nothing is broadcast) and tests the real AAPLx token and V2 wrapper. It is skipped unless `ARBITRUM_RPC_URL` is set:
+
+```
+ARBITRUM_RPC_URL=https://arb1.arbitrum.io/rpc FOUNDRY_PROFILE=eval forge test --match-path 'eval/fork/*'
+```
+
+All 5 fork tests pass (2026-11-02).
+
 | File | Covers |
 |---|---|
 | `eval/oracle/OracleEval.t.sol` | A1–A7, A9–A11; split and reverse-split pushes; fuzzed breaker boundary; 100/250/500-asset gas |
@@ -36,9 +46,39 @@ All 43 tests pass; the two fuzz tests also pass at 10,000 runs.
 | `eval/euler/RouterEval.t.sol` | B7 and B8 with the stock `EulerRouter` and the v1 adapter: the two pricing paths, route precedence, stale and paused reverts through the router, governor overwrite power, fuzzed path equivalence |
 | `eval/dividends/DividendCaptureEval.t.sol` | DIV-1 prototype: pushed and claim-based dividends, hostile and re-entering distributors, end-to-end through router and adapter |
 | `eval/mocks/MockXStock.sol` | Model of an xStocks EVM token: share units × scheduled multiplier, same `multiplierUpdates` getters Euler's own xStocks adapter reads. Rounding is modelled, not copied from Backed |
+| `eval/fork/XStocksArbFork.t.sol` | XS-1 to XS-4 on the real AAPLx contracts: wrapper facts, 1:1 backing through deposit and redeem, a Backed-scheduled 2:1 split through `EulerRouter` and the v1 adapter, wrapper and token pauses |
 | `eval/prototypes/DividendCaptureWrapper.sol` | **Test-only, unaudited** prototype of the DIV-1 contract |
 
 The EVK escrow vault is stood in for by an OZ `ERC4626` in the router tests; `EulerRouter` only calls `asset()` and `convertToAssets()` on a resolved vault. EVK-specific behaviour (B3–B6, account checks, liquidation) still needs an EVK harness.
+
+## xStocks on Arbitrum (read on-chain 2026-11-02)
+
+Read-only `cast` calls against public Arbitrum RPCs, plus the fork suite. Addresses are in the plan's "xStocks on Arbitrum" section.
+
+| ID | Status | Finding | Evidence |
+| --- | --- | --- | --- |
+| XS-1 | Not an issue | The V2 wrapper (`WrappedBackedTokenImplementation` v1.0.0, implementation `0x76C6…5583`) maps one wrapper share to one token share unit: `convertToAssets(1e18) == getCurrentMultiplier()` (AAPLx `1003269012539818700`, SPYx `1007474126658766000`). `totalAssets` is supply × multiplier, so donations cannot move it. Deposit mints exactly the share units received; redeem keeps backing ≥ supply | `test_fork_wrapperFacts`, `test_fork_depositRedeemKeepsOneToOneBacking`; ProxyAdmin `getProxyImplementation` |
+| XS-2 | Not an issue | A Backed-scheduled 2:1 split leaves wrapper shares unchanged, doubles `convertToAssets`, does not move the router value at activation, and the keeper's per-share push is a 0% move | `test_fork_splitThroughRouterIsContinuous` |
+| XS-3 | Issue, workaround | Wrapper pause stops all wrapper share transfers, so escrow deposit and withdraw revert. Token pause only blocks unwrapping. The test used a mock escrow: in EVK, liquidation seizes escrow shares via `transfer` (`Liquidation.sol` `enforceCollateralTransfer`), which does not move the wrapper, so seizure likely still succeeds (see PAUSE-1) | `test_fork_wrapperPauseFreezesEscrowMovement`, `test_fork_tokenPauseBlocksUnwrapOnly` |
+| XS-4 | Issue, needs Backed | `multiplierUpdater` (and `burner`) is a single EOA, `0x5F7A…a2aD`, which can set any multiplier. Owner of token, wrapper and both ProxyAdmins is a 2-of-3 Safe with no timelock; pauser is a 3-of-5 Safe that includes the same EOA. Confirmed role: `multiplierUpdater()` returns it, `NewMultiplierUpdater` emitted at deployment. Plain EOA, 19,622 Arbitrum and 38,073 Ethereum transactions (automated hot key). Backed (2026-11-03): values come from "verified data sources" | `cast call`, `cast logs`; Backed reply |
+| XS-5 | **Likely blocker for listing** | Over 99% of Arbitrum supply of AAPLx, SPYx, TSLAx, NVDAx, MSFTx (and ~98–99% of QQQx, GOOGLx) sits in the Backed EOA; V2 wrappers hold 0 (NVDAx 0.17); no Uniswap v3 USDC pools for AAPLx or SPYx; 31 AAPLx transfers moved 0.7 tokens in 80 hours. Ethereum looks similar for AAPLx (72,457 of 74,145 in the same EOA). No DEX exit. All observed liquidity is Backed's inventory through `AtomicSwap` (see XS-7) | `cast call`, `cast logs` |
+| XS-6 | Not an issue now | `feePerPeriod = 0`, `periodLength = 604800`: no management-fee decay today. Activation times vary (SPYx: 2026-10-30 23:55 and 2026-10-31 13:45 UTC; AAPLx: 2026-08-08 00:30 UTC), and the Arbitrum multiplier matches Backed's API | `multiplierUpdates`, xStocks API |
+| XS-7 | **Blocker until exit is confirmed** | Backed's `AtomicSwap` `0x6F86…8852` (RFQ: Backed-signed quotes, allowlisted callers, counterparty and owner EOA `0x5F7A…`, upgradeable, pausable) filled 296 swaps in 27 names, 2026-05-28 to 2026-11-03. Taker sells (the liquidation direction): 115 swaps, $142k total, largest $38k, median $28. Taker buys: $1.03M, largest $434k. No weekend fills; weekday fills in all sessions. 58 of 59 CoW trades in xStocks were solvers calling `AtomicSwap`. Wrappers never traded. Via CoW, liquidation is asynchronous (no flash loans); an atomic route needs Backed to allowlist Poppie's liquidator | `cast logs` on `AtomicSwap` and 16 token and wrapper contracts; settle calldata decode |
+| XS-8 | Issue, needs Backed | Mergers, spin-offs, delistings and migrations are handled case by case ("users are made whole"), with notice depending on when Backed learns. Unconfirmed whether cash or second-token payouts reach V2 wrapper holders | Backed reply |
+| XS-9 | Issue, needs Backed | No on-chain bound on multiplier updates: simulated calls from the updater succeed for ×1000, ×0.001, activation in 60 s or in the past; only a stale "current multiplier" argument or another caller reverts. Observed notice: 0 to ~4 hours (AAPLx, five updates) | `eth_call` simulation; `MultiplierUpdated`, `MultiplierScheduled` logs |
+
+The xStocks docs' wrapper example (10 tokens at multiplier 1.1 mint 11 wrapped tokens) does not match the code, which mints 10. The code is authoritative.
+
+## Dinari and Ondo on Arbitrum (read on-chain 2026-11-02)
+
+| ID | Status | Finding | Evidence |
+| --- | --- | --- | --- |
+| DN-1 | Info | Production `DShareFactory` `0xB4Ca…03b8` emitted 251 `DShareAdded` events (dShare plus wrapped dShare); 238 have supply, 11 wrappers have any supply | `cast logs`, `cast call` |
+| DN-2 | **Blocker as is** | The wrapped dShare has `recover(account, amount)`, letting its admin send the wrapper's dShares anywhere (selector present in deployed implementation `0x9941…5dE1`) | `WrappedDShare.sol`; deployed bytecode |
+| DN-3 | Issue | Wrapped dShare `totalAssets` is the wrapper's dShare balance (Solady `ERC4626`), so donations and Dinari's dividend deposits move the rate. NVDA `convertToAssets(1e18)` = 15.08e18; USFR 5 shares back 727 dShares | `cast call` |
+| DN-4 | Issue | Upgrade beacons for all dShares (`0x1543…dacb`) and all wrappers (`0xad20…f7c5`), and the transfer restrictor, are owned by EOA `0x06B0…60a3`. The deployed dShare and wrapper don't expose `owner`, `defaultAdmin` or `hasRole`, so the admin of `recover` and `setBalancePerShare` wasn't confirmed | `cast call` |
+| DN-5 | Issue | Holdings are concentrated: three EOAs hold ~90% of NVDA, ~98% of MSTR. No Uniswap v3 USDC pool for NVDA | `cast logs`, `cast call` |
+| ON-1 | Confirmed | Ondo GM's BSC token addresses (`NVDAon`, `TSLAon`) have no code on Arbitrum, consistent with Ondo's docs | `cast codesize` |
 
 ## Blockers and new on-chain logic
 
@@ -47,6 +87,8 @@ The EVK escrow vault is stood in for by an OZ `ERC4626` in the router tests; `Eu
 | DIV-1 | **Deferred** (not needed at launch: only reinvesting issuers are listed). Blocker if cash or claim-based dividends are captured later | Stablecoin dividends pushed to the holder, or claimable by the holder, cannot be recovered from an EVK escrow or an unmodified OZ `ERC4626` (`test_stablecoinDividendIsStuck`). EVK has no token-recovery or arbitrary-call path (from EVK design and `scale:docs/ARCHITECTURE.md:89-97`; not yet tested on local EVK, see B4). | New **dividend-capture wrapper**: OZ `ERC4626` (`decimalsOffset = 0`, seed deposit) plus `sweep(token)` for any token except the underlying, sending to an immutable reserve, and `claim(target, data)` limited to an operator and allowlisted distributors (never the underlying or the wrapper), with a post-call check that the underlying balance did not drop and re-entry blocked. A test-only prototype (`eval/prototypes/DividendCaptureWrapper.sol`, about 60 lines of logic) passes all 8 tests in `eval/dividends/`, including hostile and re-entering distributors, and prices unchanged through the v1 adapter and `EulerRouter`. Production version needs its own spec and audit. Only needed for issuers with cash or claim-based dividends. |
 | PATH-2 | Issue, configuration rule | With the stock `EulerRouter`, resolving the wrapper to the rebasing token and pricing the token makes collateral value jump with the multiplier on-chain, while the push oracle still holds the pre-split price: 2× overvalued at a 2:1 split until the next push, 3× at 3:1, and the 3:1 correction (−66.7%) cannot pass a 5000 bps breaker (`test_B7_path2_resolvingToRebasingToken_overvaluesAtActivation`). Euler's own xStocks adapter avoids this by reverting around activation (`lib/euler-price-oracle/src/adapter/chainlink/ChainlinkInfrequentXStocksOracle.sol:18-22`); the v1 oracle has no cheap equivalent, since pause wipes price state. Pricing the wrapper share directly is continuous through activation (`test_B7_path1_wrapperShareIsBase_splitIsContinuous`), and a direct route takes precedence over a resolved vault (`test_B7_directConfigTakesPrecedenceOverResolvedVault`). | Config-check script: every rebasing asset has a direct `wrapper/USD → adapter` route and no `govSetResolvedVault(wrapper)`. No contract change. |
 | KEEP-1 | Issue, workaround | Single `keeper` address (`PoppieEulerOracle.sol:24,35-38`). Losing the key stops pricing until the admin calls `setKeeper` (`:226-230`). | No contract needed at launch: several keeper processes share one KMS key, and the Oracle Safe calls `setKeeper` for failover (instant). Optional later: a keeper Safe with Zodiac Roles, or a small keeper forwarder (new contract). |
+
+| PAUSE-1 | Issue, new contract | Issuers pause assets on schedule (Ondo: 20 min, 00:52–01:12 UTC weekdays, `ASSET_PAUSED`, daily share-multiplier update). v1 cannot pause and resume on a schedule: `pauseAssets` erases the price (`PoppieEulerOracle.sol:135-138`), and resuming needs `adminSetPrice` (`:95-97`). EVK hooks can: a hook target is called with the original calldata plus caller and may revert (`Base.sol` `invokeHookTarget`); ops are bit flags (`Constants.sol`: `OP_DEPOSIT`…`OP_SKIM`). Liquidation seizes via the escrow's `transfer` (`OP_TRANSFER`), so leaving that op unhooked keeps liquidations open | `ScheduledPauseHook` (~80 lines, owner `MS_OPS`), hooked on deposit, mint, withdraw, redeem and skim of each escrow; alerts matched to issuer schedules. No v1 change |
 
 No finding requires modifying `PoppieEulerOracle` or `PoppieEulerAdapter`.
 
