@@ -10,7 +10,7 @@ Poppie lends USDC on Euler V2 against tokenized equities, from about 100 assets 
   - Euler: EVK, EulerRouter and Earn;
   - Safe.
 
-  **One small new contract:** `ScheduledPauseHook`, which freezes escrow movement during issuer pause windows (see "Issuer pause windows"). Launch can proceed before it is audited.
+  **No new contracts at launch.**
 - **Hubs:** one Prime hub (blue chips only) plus one hub per long-tail risk band. Each band hub holds all blue chips and that band's long-tail names.
 - **Lenders:** deposit USDC into Prime Earn or Yield Earn, which allocate across the hubs.
 - **Revenue:** interest fee and rate floor per hub, plus Earn performance fees. Part of Poppie's share funds a loss reserve.
@@ -343,12 +343,12 @@ Size LTV buffers for weekend gaps, and size liquidator capacity for the Monday o
 
 Issuers pause assets on-chain for scheduled operations. Example: Ondo pauses with reason `ASSET_PAUSED` for 20 minutes (00:52–01:12 UTC, weekdays) to apply its daily dividend share-multiplier update.
 
-- **Schedule:** the corporate-action engine reads each issuer's published pause schedule (status API, or on-chain schedules such as xStocks' `multiplierUpdates`).
-- **Freeze movement:** `MS_OPS` writes the windows, with a few minutes' buffer either side, into `ScheduledPauseHook`. Recurring windows need one batch per schedule change, not one per day.
-- **Inside a window**, the name's escrow rejects deposit, mint, withdraw, redeem and skim. Prices keep updating, and liquidations continue: seizures are escrow share transfers, which the hook leaves open. Opening and closing need no transaction.
-- **Pricing:** the keeper applies the issuer's new multiplier from its activation time, as for xStocks. Daily dividend changes are far below the breaker.
-- **Notify:** an issuer pause inside a scheduled window is logged, not paged. An unscheduled pause, or one that outlasts its window, pages on-call (see Monitoring).
-- **Until the hook is audited**, the issuer's own pause still freezes escrow movement on-chain, and only the alerting applies.
+- **Schedule:** the back end loads each issuer's pause schedule (status API, or on-chain schedules such as xStocks' `multiplierUpdates`) and serves it to the app and SDK.
+- **App:** during a window, plus a few minutes' buffer, deposit and withdraw for that name are disabled, with a banner.
+- **SDK:** deposit and withdraw calls for that name throw a typed error during a window. Borrow, repay and liquidation are unaffected.
+- **On-chain:** the issuer's own pause enforces the freeze, since token transfers revert. Poppie does not block direct contract calls.
+- **Pricing:** the keeper applies the issuer's new multiplier from its activation time. Daily dividend changes are far below the breaker.
+- **Notify:** an issuer pause inside a known window is logged, not paged. An unscheduled pause, or one that outlasts its window, pages on-call (see Monitoring).
 
 ## Contracts Poppie deploys on Arbitrum
 
@@ -361,12 +361,9 @@ Issuers pause assets on-chain for scheduled operations. Example: Ondo pauses wit
 | Kink IRMs | Euler IRM factory | 1 per band, plus Prime | Set by `MS_OPS` |
 | Hubs (borrow vaults) | EVK | 1 + 3 | `governorAdmin`: `MS_OPS` |
 | Escrow vaults | EVK factory, escrow config | 1 per asset | `governorAdmin`: `MS_OPS` |
-| `ScheduledPauseHook` | **New**, about 80 lines; needs audit | 1, shared by all escrows | Owner: `MS_OPS` |
 | Fallback wrappers | Unmodified OZ `ERC4626` | Only where no issuer wrapper exists | Immutable |
 | Euler Earn vaults | Euler Earn `b2fd6e6` | 2 | Owner and curator: `MS_OPS` |
 | Oracle Safe, `MS_OPS`, reserve Safe | Safe | 3 | Their signers |
-
-**`ScheduledPauseHook`:** an EVK hook target installed once per escrow (`setHookConfig(hook, OP_DEPOSIT | OP_MINT | OP_WITHDRAW | OP_REDEEM | OP_SKIM)`). For each escrow it stores recurring windows (weekday set, UTC start, duration) and one-off windows (start, end), and reverts hooked calls inside any window. `OP_TRANSFER` is deliberately not hooked, so liquidations keep working. The calling escrow is identified by `msg.sender`; windows per escrow are capped to bound gas. Only `MS_OPS` can change windows.
 
 Euler core contracts (EVC, factories, lenses, `ProtocolConfig`) are used at Euler's Arbitrum addresses. The oracle and adapter are compiled with their original settings (solc 0.8.24, `shanghai`) and verified byte-for-byte.
 
@@ -374,7 +371,7 @@ Euler core contracts (EVC, factories, lenses, `ProtocolConfig`) are used at Eule
 
 Governance has three layers:
 
-1. **Poppie contracts:** three address slots in the v1 contracts, plus the `ScheduledPauseHook` owner (`MS_OPS`).
+1. **Poppie contracts:** three address slots.
 2. **Stock Euler contracts:** each has one governor address, set to `MS_OPS`.
 3. **Back-end keys:** at launch only the keeper key has on-chain power.
 
@@ -436,7 +433,7 @@ The risk engine has no key. It proposes batches to `MS_OPS`, whose signers revie
 | Stop new borrowing in a hub | Hub borrow cap to current borrows | `MS_OPS` | Yes | `AmountCap` rounding to confirm on EVK |
 | Stop pricing a name (e.g. a wrong price or wrong base decimals) | Oracle `pauseAssets` | Oracle Safe or keeper | Yes | Accounts holding it freeze; recovery needs `adminSetPrice` + push |
 | Fix a wrong route or base | Router `govSetConfig`, adapter `unregisterBase` | `MS_OPS` | Yes | The name is unpriced, so accounts holding it freeze until it is re-routed |
-| Freeze a name's escrow during issuer pause windows | `ScheduledPauseHook` windows | `MS_OPS` sets windows; opens and closes automatically | Scheduled | Deposits and withdrawals revert in the window; prices and liquidations unaffected |
+| Block a name during issuer pause windows | App and SDK block deposit and withdraw | Back end | Scheduled | Direct contract calls are not blocked; the issuer's own pause enforces on-chain |
 | Stop everything on a vault | Hook config: disable all operations | `MS_OPS` | Yes | Blocks repay and liquidation while active; undone by the same call. Catastrophe only |
 
 Pauses have no on-chain time limit; they last until reversed.
@@ -491,7 +488,7 @@ Before each batch, a config-check script verifies:
 - wrappers are never resolved vaults;
 - escrows come from Euler's factory;
 - caps are finite;
-- each escrow's hook is `ScheduledPauseHook` with the expected ops, and its windows match the issuer's current schedule.
+- the name's issuer pause schedule is loaded and served to the app and SDK.
 
 There is no on-chain notice period. The config-check script and decoded, simulated review of every batch are the protection **[Policy]**.
 
@@ -511,7 +508,7 @@ Alert on:
   - freezes or blacklisting of Poppie's wrapper or escrow addresses;
   - proxy upgrades of issuer tokens and wrappers (xStocks: `Upgraded` on the token and wrapper ProxyAdmins);
   - token or wrapper pause (`PauseModeChange`). Inside a scheduled window: log only. Outside one, or lasting past its end: page;
-  - an issuer schedule that differs from the windows stored in `ScheduledPauseHook`;
+  - an issuer pause schedule that changes or cannot be fetched;
   - changes to the multiplier updater, fee parameters or sanctions list;
   - every scheduled, overridden or applied multiplier change. Backed commits to no advance notice, so watch the chain;
   - wrapper `convertToAssets(1e18)` differing from the token's `getCurrentMultiplier()`.
@@ -524,8 +521,7 @@ Alert on:
 | Track | Scope |
 | --- | --- |
 | Deployment and configuration | The grant scripts and check script; Safe thresholds; byte-for-byte verification of the oracle and adapter |
-| `ScheduledPauseHook` | Window logic, UTC and weekday handling, gas bound, ops hooked |
-| Off-chain systems | Keeper, corporate-action engine, alerting |
+| Off-chain systems | Keeper, corporate-action engine, alerting, pause-window sync to app and SDK |
 | Economic | Class and band thresholds; breaker and cap sizing against real weekend, earnings and split gaps |
 
 ## Rollout
@@ -547,7 +543,7 @@ Alert on:
 | D5 | Listing | Decided: instant, by `MS_OPS` |
 | D6 | `adminSetPrice` | Decided: Oracle Safe only, with an on-call signer rota |
 | D7 | Oracle instances | Decided: one |
-| D8 | Issuer pause windows | Decided: freeze escrow movement with `ScheduledPauseHook`, windows set by `MS_OPS`; alerts matched to schedules |
+| D8 | Issuer pause windows | Decided: off-chain. App and SDK block deposit and withdraw during issuer windows; the issuer's on-chain pause enforces; alerts matched to schedules |
 
 ## Known blockers and limitations
 
@@ -590,7 +586,7 @@ As of 2026-11-03. Each must be closed, or explicitly accepted, before listing.
 
 **Euler and Poppie side**
 
-5. **EVK behaviour:** stale-price effects on borrow, withdraw and liquidation; supply- and borrow-cap freezes and `AmountCap` rounding; all-ops disable; liquidation seizure during an issuer wrapper pause and inside a `ScheduledPauseHook` window. Needs an EVK harness.
+5. **EVK behaviour:** stale-price effects on borrow, withdraw and liquidation; supply- and borrow-cap freezes and `AmountCap` rounding; all-ops disable; liquidation seizure during an issuer wrapper pause. Needs an EVK harness.
 6. **Euler Earn:** whether Euler's Earn factory accepts Poppie's hubs as strategies on Arbitrum.
 7. **Fees:** Euler's protocol fee share on Arbitrum (`ProtocolConfig`).
 8. **Scale:** gas for 300+ LTV entries in one hub.
@@ -601,7 +597,7 @@ As of 2026-11-03. Each must be closed, or explicitly accepted, before listing.
 - **Price bounds:** prices are bounded per push and per window. A wrong push within those bounds, or any admin price write, goes live.
 - **Risk limits:** set by Poppie's published policy, not by contracts.
 - **Pauses:** last until reversed. A vault-wide disable also blocks repay and liquidation while active.
-- **Pause windows:** a name's escrow rejects deposits and withdrawals during its issuer's scheduled pause windows, published by Poppie. Borrowing, repaying and liquidation continue.
+- **Pause windows:** Poppie's app and SDK block deposits and withdrawals of a name during its issuer's published pause windows. Direct calls may revert because of the issuer's own pause. Borrowing, repaying and liquidation continue.
 - **Changes:** listings, route changes and risk changes take effect immediately, with no notice period.
 
 ## Deferred
@@ -610,3 +606,4 @@ As of 2026-11-03. Each must be closed, or explicitly accepted, before listing.
 - **Timelock:** move the router governor, adapter admin and vault governance behind a timelock for advance public notice of structural changes.
 - **Delegated risk keys:** let a back-end key tighten instantly through an intermediary Safe whose membership `MS_OPS` can revoke at once.
 - **Multiple keeper keys:** a keeper Safe, or a second oracle instance.
+- **Scheduled pause hook:** an EVK hook that freezes escrow deposits and withdrawals on-chain during issuer windows, leaving liquidations open. Design on branch `v2-scheduled-pause-hook`.
