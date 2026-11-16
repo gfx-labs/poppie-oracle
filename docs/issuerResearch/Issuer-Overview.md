@@ -1,6 +1,6 @@
 # Issuers on Arbitrum at a glance
 
-*Nov 5, 2026 (UTC). Details and evidence: `docs/EVAL_FINDINGS.md` (finding IDs in brackets) and the issuer sections of `docs/Poppie-Arbitrum-Hub-Architecture-Governance-Plan.md`.*
+*Nov 5, 2026 (UTC). Poppie will not onboard directly with any issuer and runs no liquidator at launch; third parties liquidate through providers the issuer already allows, and caps limit exposure to the exit that exists (D9). Details and evidence: `docs/EVAL_FINDINGS.md` (finding IDs in brackets) and the issuer sections of `docs/Overview.md` (issuers, liquidity and corporate actions, shared by both designs).*
 
 | | xStocks (Backed) | Robinhood Stock Tokens | Dinari | Ondo GM | Reality |
 | --- | --- | --- | --- | --- | --- |
@@ -8,22 +8,22 @@
 | **Fits v1 contracts unchanged** | Yes, via issuer V2 wrapper [XS-1, XS-2] | Yes, no wrapper needed [RH-1, RH-2] | Not as is | — | Yes, no wrapper needed (since 2026-10-17) [RE-1] |
 | **Splits, dividends** | Multiplier; wrapper follows; reinvested | Multiplier on static balances (ERC-8056); reinvested | Rebase; wrapper rate moves with donations [DN-3] | Reinvested, static balances | Multiplier on static balances (ERC-8056), applied at once; **rebased before 2026-10-17** [RE-3]; dividends (cash in USDT0, stock in rTokens) paid separately to the depositor via Merkl; **withheld for Poppie escrows until Merkl supports them** [RE-9] |
 | **Fork-tested** | Yes (Arbitrum) | Yes (Robinhood Chain) | No | — | Yes (Arbitrum) |
-| **Exit liquidity** | Backed RFQ only: $1M/trade majors in market hours, $10k long tail overnight, none at weekends [XS-7] | Out of scope (not on Arbitrum) | Thin, concentrated [DN-5] | — | **97–100% in 2–3 EOAs; four ~$190k Uniswap pools**; atomic USDC redemption only for wallets Reality registers [RE-10] |
-| **Atomic liquidation** | Only via an onboarded party (Oku) [D9] | — | — | — | Uniswap pools, or atomic redemption if Reality registers the liquidator [RE-10] |
+| **Exit liquidity** | Backed's inventory only, via its allowlisted RFQ (`AtomicSwap`): $1M/trade majors in market hours, $10k long tail overnight, none at weekends. Reached through Enso, 0x (via Enso) or CoW solvers [XS-7] | Out of scope (not on Arbitrum) | Thin, concentrated [DN-5] | — | **97–100% in 2–3 EOAs; four ~$190k Uniswap pools**; atomic USDC redemption only for wallets Reality registers [RE-10] |
+| **Atomic liquidation** | Possible for third parties through Enso, which Backed has allowlisted [D9] | — | — | — | Uniswap pools only. Atomic redemption needs Reality to register the liquidator, which is ruled out [RE-10, D9] |
 | **Issuer can take collateral** | No burn from holders | **Yes: two EOAs can burn from any holder** [RH-5] | **Yes: `recover` moves wrapper backing** [DN-2] | — | No burn found; freeze and pause can lock it [RE-6] |
 | **Multiplier key** | One EOA, unbounded; notice 4 min to 4 h [XS-4, XS-9] | One EOA, unbounded, instant [RH-4] | Admin unconfirmed [DN-4] | — | Registry action (EOA) + 3-of-5 Safe executes; ratio hash-checked; can run early [RE-2] |
 | **Known incidents** | HONx halved for 8 h 25 min, 2026-06-29 [XS-13] | SOXX 3:1 split applied a day early (2026-11-04), reverted, re-applied 11-05 [RH-6, RE-5] | — | — | rCRWD split a week early and reversed; rHON reverse split applied twice (2026-06-29); splits left unexecuted (rMTUM, rQUAL and 6 older); SOXX applied 6 h before the open [RE-4, RE-5] |
 | **Mergers, delistings** | Wrapper holders must unwrap first; none completed yet; KVUEx pending [XS-8, XS-12] | Not active; undocumented [RH-9] | — | — | 4 delisted, balances left, no payout seen; process unknown [RE-11, RE-12] |
 | **Upgrades, admin** | 2-of-3 Safe, no timelock | EOAs on one registry for all tokens [RH-8] | EOA owns beacons [DN-4] | — | One beacon for all tokens, 3-of-5 Safe, no timelock; **source unverified** [RE-7] |
-| **Verdict** | **Listable once exit is sized and D9 decided** | **Good design; wait for Arbitrum; issuer risk accepted** | **Blocked** (`recover`) | **Unavailable** | **Not now** (liquidity, issuer record, unverified code) [D10] |
+| **Verdict** | **Listable, with caps sized to Backed's quoted depth per session** | **Good design; wait for Arbitrum; issuer risk accepted** | **Blocked** (`recover`) | **Unavailable** | **Not now** (liquidity, issuer record, unverified code) [D10] |
 
 ## Main open items per issuer
 
-- **xStocks:** Backed questions 9–18 (`docs/xStocks-Backed-Questions.md`), especially what wrapper holders get in a merger (KVUEx) and the HONx halving; Oku onboarding (D9); committed liquidator capital.
-- **Robinhood:** Arbitrum deployment model and cross-chain sync; burn-role controls; the SOXX change (`docs/Robinhood-Questions.md`).
+- **xStocks:** Backed questions 9–18 (`docs/issuerResearch/xStocks-Backed-Questions.md`), especially what wrapper holders get in a merger (KVUEx) and the HONx halving; confirm third parties can liquidate through Enso at our cap sizes (`docs/issuerResearch/Enso-Questions.md`, D9); per-session cap sizing.
+- **Robinhood:** Arbitrum deployment model and cross-chain sync; burn-role controls; the SOXX change (`docs/issuerResearch/Robinhood-Questions.md`).
 - **Dinari:** who holds `recover`, and whether it can be removed or timelocked.
 - **Ondo:** whether it will deploy on Arbitrum. The BSC keeper's handling of Ondo multiplier errors is open (`docs/Poppie-Team-Questions.md`).
-- **Reality:** no contact with Reality or Merkl yet; dividends for Poppie depositors are withheld until Merkl supports Poppie's escrows; questions ready (`docs/Reality-Questions.md`): verified source and a beacon timelock, the rCRWD and rHON errors and the overdue splits, merger handling, how long dividends are withheld for unsupported protocols, who holds supply and whether a third party can redeem, and whether lending use is permitted.
+- **Reality:** no contact with Reality or Merkl yet; dividends for Poppie depositors are withheld until Merkl supports Poppie's escrows; questions ready (`docs/issuerResearch/Reality-Questions.md`): verified source and a beacon timelock, the rCRWD and rHON errors and the overdue splits, merger handling, how long dividends are withheld for unsupported protocols, who holds supply and whether a third party can redeem, and whether lending use is permitted.
 
 ## Reality dividends in an escrow
 

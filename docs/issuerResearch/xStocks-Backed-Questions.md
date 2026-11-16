@@ -1,6 +1,8 @@
 # Questions for Backed (xStocks on Arbitrum)
 
-**Status (Nov 4, 2026):** questions 1–8 answered. Questions 9–18 not yet sent. Priority: 12 and 17 (what wrapper holders get in a merger), 15 (the HONx halving) and 9 (Oku onboarding, decision D9).
+**Status (Nov 5, 2026):** questions 1–8 answered. Questions 9–18 not yet sent. Priority: 12 and 17 (what wrapper holders get in a merger), 15 (the HONx halving) and 9 (liquidating through Enso, decision D9).
+
+**Decision (Nov 5):** Poppie will not onboard with Backed, or any issuer, directly (legal exposure). Backed's `AtomicSwap` allowlist already includes Enso's shared executor (`0x4Fe9…E003`, since 2026-05-21), the largest counterparty by swap count (125 of 299). So third-party liquidators can sell atomically through Enso without onboarding. Poppie runs no liquidator at launch (D9). Question 9 is rewritten accordingly.
 
 *Nov 2, 2026. Poppie plans to accept xStocks as collateral in Euler V2 lending markets on Arbitrum, holding the V2 wrapper (`wrapperAddressV2`) and pricing each wrapper share as equity price × `convertToAssets(1e18)`. We have tested the token and wrapper contracts on an Arbitrum fork.*
 
@@ -55,7 +57,7 @@
 ## What the Nov 4 answers settle
 
 - **No backstop.** Backed will not buy seized collateral. Liquidation goes through solvers on CoW, or through `AtomicSwap` directly once an onboarded party is in place.
-- **Atomic liquidation is possible, but only behind an onboarded party** (Oku, if it onboards). This is now a Poppie decision (D9), not an open question.
+- **Atomic liquidation needs an onboarded party.** Poppie won't onboard; Enso already is one, so third parties can liquidate through it (D9).
 - **Exit size and hours are known:** up to $1M per trade on majors in market hours; $10k per trade on long-tail names overnight; no executable quotes at weekends. Supply caps can be sized from this.
 - **Corporate actions:** nothing is paid into the wrapper. Holders must unwrap, so Poppie must wind a name down and close or liquidate every position before the event.
 - **Multiplier notice:** a polling API with a `reason` field. Backed says notice is normally about 2 hours and at least 15 minutes, with no on-chain minimum. On-chain we saw less: HONx 6 minutes (2026-02-27) and 4–5 minutes (2026-06-29); see 13 and 15. The keeper must handle this automatically; a Safe cannot act in 15 minutes.
@@ -63,13 +65,13 @@
 
 ## Follow-ups (Nov 4)
 
-9. **Onboarding Oku.** What does onboarding involve (entity, KYB, documents, jurisdictions, time)? Once Oku is onboarded, can you allowlist a contract address that Oku controls (a liquidator) as a taker on `AtomicSwap`? Would it get signed sell quotes by API, and with what latency, validity window and rate limits? Are there fees?
+9. **Third-party routes (Enso).** We will not onboard directly. Enso's executor (`0x4Fe9…E003`) is on `AtomicSwap`'s allowlist and fills sells for contract callers (for example 0x's API and Oku's router). Do your quote sizes and hours apply in full to quotes served through Enso, or does Enso have its own limits with you? Is Enso's allowlisting expected to stay, and would you notify integrators before removing a provider? Do you see any issue with third-party liquidators of a lending protocol selling seized xStocks through Enso?
 
 10. **Quote size.** Is the $1M figure per transaction, and how often can it be repeated (per hour, per day, per name)? Which names count as majors? What size do you quote for majors in the extended and overnight sessions, and for long-tail names in market hours? Does the size hold in a fast market, such as a 10% gap at the open?
 
 11. **Weekly hours.** When do executable quotes stop on Friday and resume on Sunday or Monday (UTC)? What are the exact overnight-session hours?
 
-12. **Unwrap deadline.** In a merger or delisting (or a spin-off not folded into the multiplier), how much notice will holders get to unwrap, and what is the deadline? What happens to V2 wrapper shares still outstanding after it: are they frozen, redeemable later, or paid out some other way? Will the sale facility be open to a liquidator contract behind an onboarded party? Can you notify integrators such as Poppie directly?
+12. **Unwrap deadline.** In a merger or delisting (or a spin-off not folded into the multiplier), how much notice will holders get to unwrap, and what is the deadline? What happens to V2 wrapper shares still outstanding after it: are they frozen, redeemable later, or paid out some other way? Will the sale facility stay reachable through third-party providers such as Enso? Can you notify integrators such as Poppie directly?
 
 13. **Multiplier schedule.** What does the `Administrative` reason cover, and when is it used? Is the API entry published before, at the same time as, or after the on-chain schedule, and can the two ever disagree? From the `updateMultiplierValue` calldata we see HONx scheduled with 6 minutes' notice on 2026-02-27 and 4–5 minutes on 2026-06-29, and AAPLx with 18 minutes on 2026-05-09. Were those late-data cases, and is 15 minutes a floor you enforce? Is a webhook available instead of polling?
 
@@ -79,10 +81,22 @@
 
 14. **Spin-offs.** After Versant's spin-off from Comcast, CMCSAx's multiplier rose 4.72% on 2026-01-07, and VSNTx was only listed in September. Did you sell the Versant shares and reinvest in CMCSA through the multiplier? Is that the standard treatment for every spin-off? For Solstice, HONx's multiplier rose only 1.10% on 2025-10-30. What did that step cover, and how were HONx holders credited for the Solstice shares? Will Honeywell Aerospace (HONAx) be handled the same way?
 
-15. **HONx on 2026-06-29.** The multiplier was scheduled from 1.02409 to 0.51205 (exactly half) at 15:24 UTC, active 15:30, and reset to 0.99907 at 23:50, active 23:55, on both chains, each with about 5 minutes' notice (`docs/HONx-Multiplier-Incident.md`). What happened? Another issuer (Reality) applied a 2→1 HON reverse split twice the same day, so was there a shared data-provider error? Why is the reset 2.44% below the pre-halving value? Were any holders or redemptions affected? What stops this recurring, and why was the notice under your 15-minute minimum?
+15. **HONx on 2026-06-29.** The multiplier was scheduled from 1.02409 to 0.51205 (exactly half) at 15:24 UTC, active 15:30, and reset to 0.99907 at 23:50, active 23:55, on both chains, each with about 5 minutes' notice (`docs/issuerResearch/HONx-Multiplier-Incident.md`). What happened? Another issuer (Reality) applied a 2→1 HON reverse split twice the same day, so was there a shared data-provider error? Why is the reset 2.44% below the pre-halving value? Were any holders or redemptions affected? What stops this recurring, and why was the notice under your 15-minute minimum?
 
 16. **Cross-chain sync.** Are schedules always sent to every chain with the same activation time, as we saw for HONx and CMCSAx? Which chain is authoritative for redemptions? Does the multiplier API with `network=Arbitrum` always match the Arbitrum contract?
 
 17. **Kenvue (KVUEx).** KVUEx is redemption-only and trading-halted in the API, and KMBx was listed the same day. When Kimberly-Clark's acquisition closes, what will KVUEx holders receive (KMBx, USDC, or both), on which chains, and by what mechanism (a conversion, an airdrop, a redemption window)? What happens to KVUEx tokens and wrapper shares not redeemed by the deadline? Will Qorvo (QRVOx into SWKSx) and Warner Bros. Discovery (WBDx) follow the same process?
 
 18. **Retired tokens.** When a token is dropped (for example EAx) or re-deployed (TEFx, ACS.ESx, HNR1x), the old contract stays live and unpaused. Is the old token still redeemable? Would it ever be paused or burned, and would integrators be told?
+
+### From building the keeper (Nov 13)
+
+19. **Bulk multiplier endpoint.** `/assets/{symbol}/multiplier` takes about 1 s per call (up to 5 s), one name at a time. Is there a bulk endpoint, or a feed of pending changes across all names?
+
+20. **Rate limit.** The API returns `x-ratelimit-limit: 1000`. What is the window, and is the limit per IP or per key? Is there a key for integrators?
+
+21. **User agent.** The API returned 403 to Python's default user agent. Is that intended, and which clients are allowed?
+
+22. **Token implementations.** On Arbitrum, 1,296 of 1,488 xStocks tokens run the older implementation `0xd865…e22e`, which has no `multiplierUpdates` history and emits no `MultiplierScheduled` events. AAPLx, SPYx and 190 others run `0x65c4…f19b`. Will the rest be upgraded, and when?
+
+23. **Reinvested dividends.** On 2026-11-12, AAPLx's multiplier rose 0.053%, active 01:30 UTC. That matches AAPL's dividend net of 30% US withholding. Which withholding rate and which reference price do you use to reinvest, and are they the same for every holder and chain? Is 01:30 UTC the usual activation time for dividends?

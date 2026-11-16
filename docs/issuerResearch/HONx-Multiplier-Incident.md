@@ -1,6 +1,6 @@
 # HONx multiplier halving, 2026-06-29
 
-*Read on-chain 2026-11-04 (Etherscan/Blockscout, Arbitrum RPC). Cause not yet confirmed by Backed (`docs/xStocks-Backed-Questions.md` Q15).*
+*Read on-chain 2026-11-04 (Etherscan/Blockscout, Arbitrum RPC). Cause not yet confirmed by Backed (`docs/issuerResearch/xStocks-Backed-Questions.md` Q15).*
 
 ## What happened
 
@@ -55,7 +55,7 @@ Reality's rHON token on Arbitrum shows a halving on the same day:
 - **Steps:** its registry recorded a 2→1 reverse split for HON, effective 2026-06-29 04:00 UTC. It was executed twice, at 04:00 ([tx](https://arbiscan.io/tx/0x420ecbf33e769be52ca185d41b0336c9d0032ef9fe7f7d1df23ff6f9fe84caea)) and at 10:49 ([tx](https://arbiscan.io/tx/0x579f164b6dbf245d056b67b0ef86dd589e31a8e8e7fce79236390cf33421fc29)). That is a cumulative 4→1, and it was never reversed. The 2026-10-17 migration carried it into rHON's multiplier as 0.25.
 - **Comparison:** xStocks' HONx ended the day near its old value (now 1.0012), so the two issuers disagree by 4×. Neither matches a Honeywell event we can confirm.
 - **Exposure:** rHON's supply is 0.001 tokens, so no one is exposed.
-- **What this suggests:** something in the Honeywell data feed that day produced a 2:1 factor at both issuers. We have not confirmed that. See EVAL_FINDINGS RE-4 and `docs/Reality-Questions.md` Q7.
+- **What this suggests:** something in the Honeywell data feed that day produced a 2:1 factor at both issuers. We have not confirmed that. See EVAL_FINDINGS RE-4 and `docs/issuerResearch/Reality-Questions.md` Q7.
 
 ## What it would have done to Poppie
 
@@ -66,20 +66,25 @@ Reality's rHON token on Arbitrum shows a halving on the same day:
 
 ## Would the BSC deployment have pushed it?
 
-HONx isn't listed on BSC. The question is what would happen if Ondo's multiplier did the same on a BSC collateral. Read on-chain 2026-11-04 from the prod oracle `0xAE83F1A1Ea8a4e7CbcaC3551B88E22Baea25f26D` (keeper `0xEA2b72Ed98470Dd7403E2F3da375aD2a77b1c00A`). The free RPC only served the last 54 batches (2026-11-03 21:15 to 11-04 23:45 UTC).
+HONx isn't listed on BSC. The question is what would happen if Ondo's multiplier did the same on a BSC collateral. Prices were read on-chain on 2026-11-04 from the prod oracle `0xAE83F1A1Ea8a4e7CbcaC3551B88E22Baea25f26D` (keeper `0xEA2b72Ed98470Dd7403E2F3da375aD2a77b1c00A`). The free RPC only served the last 54 batches (2026-11-03 21:15 to 11-04 23:45 UTC). Keeper behaviour is from the BSC keeper's source code.
 
 **The keeper follows the issuer multiplier.**
-- Its prices are total-return: equity × Ondo's multiplier.
-- The reference was Robinhood's Chainlink feed ÷ Robinhood's multiplier, at each push time. Median keeper ÷ equity:
+- Price = Chainlink Data Streams stock price × Ondo's multiplier.
+- The multiplier comes from Ondo's GM API (token price ÷ stock price). If the API fails, it comes from Ondo's on-chain SyntheticSharesOracle (`getSValue`).
+- On-chain, the pushed prices match: keeper price ÷ equity is
   - ≈ 1.000 for non-payers (AMD, AMZN, COIN, CRCL, TSLA, RKLB, SNDK);
   - above 1 for dividend payers: SPY 1.011, ORCL 1.012, TSM 1.012, BABA 1.009, MSFT 1.006, QQQ 1.005.
-- Ondo tokens have no on-chain multiplier, so the keeper gets it off-chain. `ConfigureProd.s.sol` names Chainlink Data Streams as the source.
+  - The equity reference here is Robinhood's Chainlink feed ÷ Robinhood's multiplier, at each push time.
 
-**What the keeper does and doesn't filter.**
-- It pushes all 36 assets every 30 min, 24/5.
-- It filters by session: NFLX is pushed only 14:45–20:45 UTC.
-- Pushes move freely (up to 15% in one push: COIN, AMD around earnings).
-- Nothing on-chain shows a corporate-action check.
+**What the keeper filters.**
+- **Sessions:** it pushes every 30 minutes, 24/5, whenever a Data Streams feed is fresh and the market is open. NFLX has only a regular-hours feed, so it is pushed only 14:45–20:45 UTC.
+- **Multiplier:** nothing. There is no corporate-action check and no limit on how far the multiplier can move a price.
+- **Guards:** it simulates the breaker and cumulative cap off-chain and drops any asset that would fail, so one bad asset does not revert the batch. A dropped asset is retried every 30 minutes against the same stored price.
+- **Ondo halts:** if Ondo's status API shows the asset as `ASSET_PAUSED`, the keeper pauses it on-chain. An erroneous multiplier with no Ondo pause is not caught here.
+- **Alpha Vantage check:**
+  - It compares the final price, after the multiplier, with Alpha Vantage's stock quote, and logs an ERROR above 15%, which alerts the team.
+  - **A halving would alert** (about 50% deviation), but the check never blocks a push.
+  - The check sees a legitimate dividend multiplier as a deviation of a few percent, well under 15%.
 
 **Live settings.**
 - `maxPriceAge` 3600 s; `anchorWindow` 86400 s.
@@ -87,11 +92,13 @@ HONx isn't listed on BSC. The question is what would happen if Ondo's multiplier
 
 | Breaker | Assets | Halving (−50%) | Reset (≈ +95%) |
 | --- | --- | --- | --- |
-| 3000 | SPY, QQQ, EWY, IAU, SLV, SPCX, TLT, USO (8) | Rejected; goes stale after 1 h | n/a |
-| 5000 | AAPL, AMD, AMZN, BABA, COIN, CRCL, GOOGL, INTC, META, MSFT, MU, NFLX, NVDA, ORCL, SNDK, TSLA, TSM, AMC, ASML, HOOD, PLTR (21) | Passes if equity is flat or up since the last accepted push. The keeper retries every 30 min against the same reference, so over 8 h it very likely passes | Rejected |
-| 7500 | MSTR, RKLB, BMNR, CRWV, IONQ, NBIS, OKLO (7) | Passes | Rejected |
+| 3000 | SPY, QQQ, EWY, IAU, SLV, SPCX, TLT, USO (8) | Dropped by the keeper; the monitor raises an error; the price goes stale after 1 h | n/a |
+| 5000 | AAPL, AMD, AMZN, BABA, COIN, CRCL, GOOGL, INTC, META, MSFT, MU, NFLX, NVDA, ORCL, SNDK, TSLA, TSM, AMC, ASML, HOOD, PLTR (21) | Passes if equity is flat or up since the last accepted push. Otherwise dropped and retried every 30 min against the same reference, so over 8 h it very likely passes | Dropped |
+| 7500 | MSTR, RKLB, BMNR, CRWV, IONQ, NBIS, OKLO (7) | Passes | Dropped |
 
-**Outcome for 28 of 36 assets, if the keeper has no corporate-action check:**
-- The halved price would likely go live, and HONx-style accounts with LTV above half the liquidation LTV become liquidatable.
-- The correct post-reset price would exceed every breaker, so the halved price stays until it goes stale (1 h) or the Safe calls `adminSetPrice`.
-- If the keeper does not drop a reverting entry from its batch, the whole batch reverts (A1) and all 36 assets go stale within an hour.
+**Outcome for 28 of 36 assets:**
+- The halved price would likely go live. HONx-style accounts with LTV above half the liquidation LTV become liquidatable.
+- The team is alerted within one push cycle by the Alpha Vantage check. Until the halved price passes, the monitor's rejected-price error also fires. Nothing stops the push automatically, so the exposure lasts until someone acts.
+- The correct post-reset price exceeds every breaker. The keeper drops it, and the halved price stays until it goes stale (1 h) or the Safe calls `adminSetPrice`.
+- In v2 the keeper's multiplier gate would skip the halved price: the change matches no corporate action. Its stock-price gate compares stock to stock, so it would not see this error (see the plan's "Price sources and cross-check").
+- The v2 keeper prototype replays this on an Arbitrum fork (`TestRogueHalving`, EVAL_FINDINGS KEEP-11). The halving is skipped and paged on every run, because Backed's API reports the same value and only the corporate-action calendar flags it. The real reset landed 2.44% below the earlier value, so the keeper would keep skipping HONx until someone adds a manual approval to the calendar.

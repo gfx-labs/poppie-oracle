@@ -18,7 +18,7 @@
 
 | Concern | v1-as-is approach |
 |---|---|
-| Prices | v1 `PoppieEulerOracle` + `PoppieEulerAdapter`, redeployed unchanged. Keeper pushes on deviation plus heartbeat, chunked and pre-simulated. Possibly several oracle/adapter instances (per issuer or band) |
+| Prices | v1 `PoppieEulerOracle` + `PoppieEulerAdapter`, redeployed unchanged. Keeper (extended from the BSC keeper) pushes on deviation plus heartbeat, chunked and pre-simulated, behind blocking stock-price and multiplier cross-checks. Possibly several oracle/adapter instances (per issuer or band) |
 | Vaults | Stock EVK hubs (Prime + bands) and escrow vaults; `CFG_DONT_SOCIALIZE_DEBT`; loss reserve Safe |
 | Governance | evk-periphery `GovernorAccessControlEmergency` (instant tightening), `CapRiskSteward` (bounded cap raises), Safe for loosening, `TimelockController` for structural changes |
 | Pauses / closed deposits | EVK native op-disable (hooked op with `hookTarget = 0`) and supply caps frozen at current supply |
@@ -36,7 +36,7 @@ For each item record: **status** (see §4), evidence, impact at 500 assets, and 
 
 | ID | Question | How to verify | If it's an issue |
 |---|---|---|---|
-| A1 | Does one bad entry (breaker trip, paused, unknown asset, zero price) revert the whole `keeperPushPrices` batch? | Read the loop; test a 3-asset batch with one failing entry | Keeper simulates every chunk and drops failing assets. Not a blocker; specify in keeper design |
+| A1 | Does one bad entry (breaker trip, paused, unknown asset, zero price) revert the whole `keeperPushPrices` batch? | Read the loop; test a 3-asset batch with one failing entry | Resolved off-chain: the BSC keeper simulates the guards, drops failing assets and retries a reverted batch once without the failing asset. v2 reuses it and adds chunking |
 | A2 | Circuit breaker and cumulative deviation cap: per-asset or global? Settable range? Can thresholds be wide (≥ 30%)? Admin-only? | Read setters and bounds; test boundary values | Count admin ops per Monday open / earnings gap at 500 assets. Blocker only if thresholds can't be sized per class |
 | A3 | How does the anchor window behave after a gap (weekend, halt, stale period)? Does a valid push after staleness pass both guards against the stale `lastPrice` / old anchor? | Test: push, warp > `maxPriceAge` and > `anchorWindow`, push within and beyond thresholds | Determines whether "stop pushing → auto-freeze → resume" works without admin. Critical for closed-market policy A |
 | A4 | Pause: confirm it zeroes price state and requires `adminSetPrice` + keeper push to recover. Can `adminSetPrice` / pause be batched? | Read + test | Restrict oracle pause to emergencies; routine halts use staleness and EVK-side controls |

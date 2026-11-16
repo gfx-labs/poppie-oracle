@@ -72,7 +72,7 @@
 
 ## Liquidity and redemption
 
-14. **Who can redeem (Partial).** The manager `0x835b…60Bc` redeems atomically for USDC. It requires a registered ID in `0x36e2…18d4`, which your admin Safe adds (7 IDs, 12 wallets so far), and a signed quote. Can a third party, such as a liquidator contract, be registered? What are the quote validity, size limits, fees, spread and hours? Does it work at weekends?
+14. **Who can redeem (Partial).** The manager `0x835b…60Bc` redeems atomically for USDC. It requires a registered ID in `0x36e2…18d4`, which your admin Safe adds (7 IDs, 12 wallets so far), and a signed quote. We would not register with you directly. Is any third-party execution provider (for example Enso or an aggregator) registered, and could a liquidator contract redeem through it? What are the quote validity, size limits, fees, spread and hours? Does it work at weekends?
 
 15. **Holders (On-chain).** In each major name, two or three EOAs hold 97–100% of supply (`0xadff…116d`, `0x4cad…1f17`, `0xed9a…8771`). Whose are they (Bitget custody, market makers, Reality inventory)? Are there plans for DEX liquidity beyond the four Uniswap v3 USDC pools (rAAPL, rCRCL, rHOOD, rSPCX)?
 
