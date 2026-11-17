@@ -39,7 +39,7 @@ USDC lending on Euler V2 (Arbitrum) against tokenized US stocks and ETFs. **Popp
 | Item | Estimate |
 | --- | --- |
 | New contract audit | None |
-| Engineering | Deployment scripts, keeper extension (prototyped), monitoring: **TBD** |
+| Engineering | Deployment scripts, keeper extension (prototyped), monitoring; estimate: POP-89 |
 | Running cost | Keeper about 0.00009 ETH per run (71 names) |
 | Operations | Daily cap raises; an on-call rota for oracle fixes |
 
@@ -49,13 +49,7 @@ USDC lending on Euler V2 (Arbitrum) against tokenized US stocks and ETFs. **Popp
 2. **Issuer keys** can change multipliers instantly (and at Robinhood, burn tokens). The keeper blocks unexplained changes; per-issuer caps limit the rest.
 3. **Ops multisig** holds all structural power, with no notice period unless a timelock is added, and signs often, so fatigue is a risk.
 
-## Open items
-
-1. An issuer with a usable Arbitrum market (xStocks is the only candidate).
-2. Confirm third parties can liquidate through Enso at our cap sizes.
-3. Price coverage beyond Chainlink's 71 names, and an overnight second price source: names are not priced overnight until one exists.
-4. A corporate-action data feed; without it, every dividend stops that name's pricing until added by hand.
-5. Set the risk appetite (loss limits, reserve size).
+Open items: tracked in Linear, project Euler v2 (Poppie).
 
 ## Rollout
 

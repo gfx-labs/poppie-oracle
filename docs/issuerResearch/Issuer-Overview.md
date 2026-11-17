@@ -17,13 +17,7 @@
 | **Upgrades, admin** | 2-of-3 Safe, no timelock | EOAs on one registry for all tokens [RH-8] | EOA owns beacons [DN-4] | — | One beacon for all tokens, 3-of-5 Safe, no timelock; **source unverified** [RE-7] |
 | **Verdict** | **Listable, with caps sized to Backed's quoted depth per session** | **Good design; wait for Arbitrum; issuer risk accepted** | **Blocked** (`recover`) | **Unavailable** | **Not now** (liquidity, issuer record, unverified code) [D10] |
 
-## Main open items per issuer
-
-- **xStocks:** Backed questions 9–23 (`docs/issuerResearch/xStocks-Backed-Questions.md`), especially what wrapper holders get in a merger (KVUEx) and the HONx halving; confirm third parties can liquidate through Enso at our cap sizes (`docs/issuerResearch/Enso-Questions.md`, D9); per-session cap sizing.
-- **Robinhood:** Arbitrum deployment model and cross-chain sync; burn-role controls; the SOXX change (`docs/issuerResearch/Robinhood-Questions.md`).
-- **Dinari:** who holds `recover`, and whether it can be removed or timelocked.
-- **Ondo:** whether it will deploy on Arbitrum. The BSC keeper's handling of Ondo multiplier errors is open (`Dinari-Ondo.md`, ON-2, ON-3 and questions for the Poppie team).
-- **Reality:** no contact with Reality or Merkl yet; dividends for Poppie depositors are withheld until Merkl supports Poppie's escrows; questions ready (`docs/issuerResearch/Reality-Questions.md`): verified source and a beacon timelock, the rCRWD and rHON errors and the overdue splits, merger handling, how long dividends are withheld for unsupported protocols, who holds supply and whether a third party can redeem, and whether lending use is permitted.
+Open items: tracked in Linear, project Euler v2 (Poppie).
 
 ## Reality dividends in an escrow
 
@@ -41,7 +35,7 @@ For Poppie, with no Merkl relationship (the default):
 - **Owed to depositors, not to the escrow.** Merkl traces each balance through a supported protocol to the owner of the position: for Poppie, the owner of the Euler sub-account holding the escrow shares. That owner may be an EOA, a Safe or a smart wallet. Withheld dividends would be back-paid to whoever owned each position at each record date, so the escrow never needs to claim anything.
 - **Not protocol revenue in either case.** The dividends belong to depositors, and a wrapper to capture them would go against Reality's stated policy, so we dropped the idea.
 
-**Merkl support, if pursued:** Poppie would ask Merkl to index its Euler escrows on Arbitrum for Reality's dividend snapshots, so each depositor's rTokens map to the depositor's wallet. Merkl already lists Euler and EulerEarn as protocols, but we found no public sign of Reality snapshots covering them. Points to settle with Merkl and Reality: that dividends go to sub-account owners and never to the escrow address (if an escrow is named, USDT0 gets stuck and same-name stock dividends can be `skim`med by anyone), which escrows and sub-accounts are covered, how collateral seized in a liquidation before the record date is handled, and how withheld dividends are back-paid. Details: RE-9.
+**Merkl support** (optional; POP-62): Merkl already lists Euler and EulerEarn as protocols, but we found no public sign of Reality snapshots covering them. Details: RE-9.
 
 ## Applies to every issuer
 

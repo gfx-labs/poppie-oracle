@@ -1,6 +1,6 @@
 # HONx multiplier halving, 2026-06-29
 
-*Read on-chain 2026-11-04 (Etherscan/Blockscout, Arbitrum RPC). Cause not yet confirmed by Backed (`docs/issuerResearch/xStocks-Backed-Questions.md` Q15).*
+*Read on-chain 2026-11-04 (Etherscan/Blockscout, Arbitrum RPC). Cause not confirmed by Backed (POP-57).*
 
 ## What happened
 
@@ -55,7 +55,7 @@ Reality's rHON token on Arbitrum shows a halving on the same day:
 - **Steps:** its registry recorded a 2→1 reverse split for HON, effective 2026-06-29 04:00 UTC. It was executed twice, at 04:00 ([tx](https://arbiscan.io/tx/0x420ecbf33e769be52ca185d41b0336c9d0032ef9fe7f7d1df23ff6f9fe84caea)) and at 10:49 ([tx](https://arbiscan.io/tx/0x579f164b6dbf245d056b67b0ef86dd589e31a8e8e7fce79236390cf33421fc29)). That is a cumulative 4→1, and it was never reversed. The 2026-10-17 migration carried it into rHON's multiplier as 0.25.
 - **Comparison:** xStocks' HONx ended the day near its old value (now 1.0012), so the two issuers disagree by 4×. Neither matches a Honeywell event we can confirm.
 - **Exposure:** rHON's supply is 0.001 tokens, so no one is exposed.
-- **What this suggests:** something in the Honeywell data feed that day produced a 2:1 factor at both issuers. We have not confirmed that. See RE-4 (`docs/issuerResearch/Reality.md`) and `docs/issuerResearch/Reality-Questions.md` Q7.
+- **What this suggests:** something in the Honeywell data feed that day produced a 2:1 factor at both issuers. We have not confirmed that. See RE-4 (`docs/issuerResearch/Reality.md`); questions to Reality and Backed: POP-60, POP-57.
 
 ## What it would have done to Poppie
 

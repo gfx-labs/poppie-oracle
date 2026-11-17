@@ -4,12 +4,12 @@ Poppie v2 on Arbitrum has two candidate designs: **zero-contract** (no new Poppi
 
 | File | Contents |
 | --- | --- |
-| `Overview.md` | Executive comparison of the two designs: risk trade-offs, costs, recommendation, decisions needed |
+| `Overview.md` | Executive comparison of the two designs: risk trade-offs, costs, recommendation |
 | `zeroContracts/Overview.md` | One-page summary of the zero-contract design |
-| `zeroContracts/Design.md` | **Baseline design**, with everything both designs share: hubs, issuers, risk register and metrics, liquidity policy, prices and corporate actions, governance, monitoring, decisions, blockers, open gaps |
+| `zeroContracts/Design.md` | **Baseline design**, with everything both designs share: hubs, issuers, risk register and metrics, liquidity policy, prices and corporate actions, governance, monitoring, decisions, known limitations |
 | `peripheralContracts/Overview.md` | One-page summary of the peripheral-contract design |
-| `peripheralContracts/Design.md` | What the peripheral design changes, and the specifications of contracts P1–P5 |
-| `issuerResearch/` | Per-issuer research and findings (`xStocks.md`, `Robinhood.md`, `Reality.md`, `Dinari-Ondo.md`, which also holds the BSC findings and questions for the Poppie team), a one-page issuer comparison, questions for issuers and Enso, and the HONx incident |
+| `peripheralContracts/Design.md` | What the peripheral design changes, and the specifications of contracts P1–P5 (code: `src/peripheral`; tests: `test-peripheral`, run with `FOUNDRY_PROFILE=peripheral forge test`; fork tests need `ALCHEMY_API_KEY` or `ARB_RPC`) |
+| `issuerResearch/` | Per-issuer research and findings (`xStocks.md`, `Robinhood.md`, `Reality.md`, `Dinari-Ondo.md`, which also holds the BSC findings), a one-page issuer comparison, and the HONx incident |
 | `evaluation/` | Evidence from testing: `Contracts.md` (v1 oracle and adapter, stock Euler, tests and how to run them) and `Keeper.md` (keeper prototype) |
 | `legacy/` | Superseded material: the original evaluation brief, the BSC threat model and the earlier rebuild plan |
 
@@ -22,3 +22,5 @@ IDs used across the docs:
 - **Peripheral contracts (P1–P5):** `peripheralContracts/Design.md`, "Contract specifications".
 
 The keeper code is in the oracleSystem repo, branch `v2` (`V2.md` there).
+
+Open items and planning live in Linear (project Euler v2, team Poppie).

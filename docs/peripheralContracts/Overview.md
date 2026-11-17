@@ -48,18 +48,13 @@ The zero-contract design (same hubs, issuers, price keeper and liquidity policy)
 
 | Item | Estimate |
 | --- | --- |
-| New contract audit | **TBD**: about 5 contracts of roughly 100–300 lines, plus their Euler integration |
-| Engineering | Zero-contract work plus the 5 contracts: **TBD** |
-| Launch delay | **TBD**, or none if the contracts are added after a zero-contract launch |
+| New contract audit | About 5 contracts of roughly 100–300 lines, plus their Euler integration; cost not yet estimated (POP-17) |
+| Engineering | Zero-contract work plus the 5 contracts; estimate: POP-89 |
+| Launch delay | Estimate: POP-89; none if the contracts are added after a zero-contract launch |
 | Running cost | Slightly more gas per borrow, deposit and price push |
 
 ## Still not possible
 
 Seizing or returning funds; limiting issuer powers beyond caps; liquidating a name while its market is closed; catching an attacker before they're listed; stopping the ops multisig from changing vault settings or removing the hooks.
 
-## Open items
-
-1. Which contracts to build, and when (audit budget).
-2. Settings: the hourly borrow limit per hub, the oracle's instant band (±X%) and delay, the keeper pause budget, fee rates.
-3. Whether an account freeze should exist (legal).
-4. Everything open in the zero-contract design.
+Open items: tracked in Linear, project Euler v2 (Poppie).

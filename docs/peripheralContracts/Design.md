@@ -1,6 +1,6 @@
 # Poppie v2 on Arbitrum: Design (peripheral-contract)
 
-*Nov 16, 2026. This design is the zero-contract design (`docs/zeroContracts/Design.md`) plus five small Poppie contracts (P1–P5) in slots the core already exposes: vault hooks, the oracle's `admin` and `keeper` slots, and the router's governor. **Everything in the zero-contract design applies unless this document says otherwise**: how it works, asset classes, hubs, issuers, risk metrics, liquidity policy, prices and corporate actions, stock Euler governance, monitoring, open gaps and decisions D1–D4, D7, D9–D11 and D18. Executive comparison and gap IDs (G1–G12): `docs/Overview.md`.*
+*Nov 16, 2026. This design is the zero-contract design (`docs/zeroContracts/Design.md`) plus five small Poppie contracts (P1–P5) in slots the core already exposes: vault hooks, the oracle's `admin` and `keeper` slots, and the router's governor. **Everything in the zero-contract design applies unless this document says otherwise**: how it works, asset classes, hubs, issuers, risk metrics, liquidity policy, prices and corporate actions, stock Euler governance, monitoring and decisions D1–D4, D7, D9–D11 and D18. Executive comparison and gap IDs (G1–G12): `docs/Overview.md`.*
 
 ## Summary
 
@@ -102,7 +102,7 @@ Everything in the zero-contract design (emergency key, cap steward, `pauseAssets
 
 **Still not possible:** seizing or returning funds; blocking repay or liquidation of a listed account; catching attackers before listing; stopping fresh addresses.
 
-Counsel should decide whether the account freeze should exist at all, and how Poppie responds to court orders and claims like the one Aave faced over the Kelp funds.
+Legal review of the account freeze, and of the response to court orders and claims like the one Aave faced over the Kelp funds: POP-55.
 
 ## Flash loans and fees
 
@@ -121,7 +121,7 @@ Issuers pause assets on-chain for scheduled operations. Example: Ondo pauses wit
 
 ## Contracts Poppie deploys on Arbitrum
 
-Five Poppie peripheral contracts are deployed (P1–P5). They are new, immutable and to be audited; specifications under "Contract specifications". Euler's governance contracts are used as published at the `evk-periphery` pin; their audit coverage at that pin is to confirm.
+Five Poppie peripheral contracts are deployed (P1–P5). They are new, immutable and to be audited; specifications under "Contract specifications". Euler's governance contracts are used as published at the `evk-periphery` pin (audit coverage at that pin: POP-90).
 
 | Contract | Code | Count | Controlled by |
 | --- | --- | --- | --- |
@@ -212,7 +212,7 @@ Whoever holds the vault governance roles can still change every setting, includi
 
 | Need | Mechanism | Who | Instant | Side effects |
 | --- | --- | --- | --- | --- |
-| Stop new deposits of a name | P2 guardian pause (extend-only, each ≤ `maxPauseDuration`); or escrow supply cap to current supply | Guardian, emergency key or `MS_OPS` | Yes | Withdrawals and liquidations unaffected (to confirm on EVK) |
+| Stop new deposits of a name | P2 guardian pause (extend-only, each ≤ `maxPauseDuration`); or escrow supply cap to current supply | Guardian, emergency key or `MS_OPS` | Yes | Withdrawals and liquidations unaffected (EVK verification: POP-35) |
 | Stop new borrowing against a name | Borrow LTV lowered | Emergency key or `MS_OPS` | Yes | At 0, indebted accounts using it freeze |
 | Stop new borrowing in a hub | P1 guardian pause (renewable, extend-only, each ≤ `maxPauseDuration`); or borrow cap to current borrows | Guardian, emergency key or `MS_OPS` | Yes | Repay and liquidation continue |
 | Limit borrowing speed | P1 hourly borrow limit | Always on | — | Large borrows split across hours |
@@ -319,7 +319,7 @@ The Oracle Safe calls the guard, which calls the oracle.
 
 A queued call can be executed during [eta, eta + delay]; then it expires and may be re-submitted. The guardian can cancel any queued call; the second Safe can cancel any except a queued `setSecondSafe`, which only the guardian can cancel. Calls not aimed at the oracle (for example to P4, or P3's own setters) are always delayed. `acceptAdmin` can't be submitted; `acceptOracleAdmin()` is permissionless.
 
-Roles: `setSafe`, `setSecondSafe` and `setBackupKeeper` run only through P3's own submit-then-execute queue, so they are delayed. `setGuardian` is instant, by the Safe or the second Safe (see `Open-Items.md`). `pauseAssets` by the Safe or the guardian records the pre-pause price.
+Roles: `setSafe`, `setSecondSafe` and `setBackupKeeper` run only through P3's own submit-then-execute queue, so they are delayed. `setGuardian` is instant, by the Safe or the second Safe (POP-37). `pauseAssets` by the Safe or the guardian records the pre-pause price.
 
 Closes **G3**, Poppie's largest unbounded risk. Cost: gaps beyond the breaker wait for the delay or the second approval.
 
@@ -343,8 +343,8 @@ Closes **G6** without delaying listings, unlike the zero-contract timelock.
 ### Not needed as contracts
 
 - **Emergency tightening and bounded cap changes:** Euler's `GovernorAccessControlEmergency` and `CapRiskSteward`, used in both designs (G2). `MS_OPS` itself is bounded only by Euler's timelocks (G5, D12).
-- **Liquidator:** still deferred (D9). It would add no buyers.
-- **Dividend capture:** still deferred (DIV-1).
+- **Liquidator:** none at launch (D9). It would add no buyers.
+- **Dividend capture:** not at launch (D4).
 
 ### Suggested order
 
@@ -409,7 +409,7 @@ In addition to the alerts in the zero-contract design (its "Oracle admin" alert 
 
 | Phase | Scope | Gate to next phase |
 | --- | --- | --- |
-| 0 | Keeper extended from BSC (multiplier and stock-price gates, per-issuer rules, chunking): **prototyped** on an Arbitrum fork against the real xStocks contracts (KEEP-2 to KEEP-22); still to do: live vendor data, a corporate-action feed, an issuer interface, production wiring and state storage, the v2 monitor. Fork test that a third party can liquidate through Enso (liquidate, unwrap, sell, repay). EVK harness and Arbitrum fork tests: stale-price and cap behaviour, Earn accepting the hubs, 300+ LTV entries in one hub, `ProtocolConfig` values. (A real xStocks multiplier change through the router and adapter already passes: `eval/fork/`). P1–P5: **written**, with unit and invariant tests on mocks (`MockVault`, `MockEVC`) and 5 Arbitrum fork tests pinned at block 525105000 (P1 against the real Chainalysis list and a real EVC deployed on the fork, with a mock hub; P3 with the audited oracle and adapter pricing a real xStock); still to do: EVK integration (EVK isn't in the repo yet; the Pauses "(to confirm on EVK)" note stays open) and the audit | All pass; audit findings closed; issuer questions answered; exit route confirmed per name |
+| 0 | Keeper extended from BSC (multiplier and stock-price gates, per-issuer rules, chunking): **prototyped** on an Arbitrum fork against the real xStocks contracts (KEEP-2 to KEEP-22); remaining keeper work: POP-29. Fork test that a third party can liquidate through Enso (liquidate, unwrap, sell, repay): POP-69. EVK harness and Arbitrum fork tests: stale-price and cap behaviour, Earn accepting the hubs, 300+ LTV entries in one hub, `ProtocolConfig` values (POP-39 to POP-42). (A real xStocks multiplier change through the router and adapter already passes: `eval/fork/`). P1–P5: **written**, with unit and invariant tests on mocks (`MockVault`, `MockEVC`) and 5 Arbitrum fork tests pinned at block 525105000 (P1 against the real Chainalysis list and a real EVC deployed on the fork, with a mock hub; P3 with the audited oracle and adapter pricing a real xStock). EVK integration (EVK isn't in the repo yet): POP-33 to POP-36. Audit: POP-17 | All pass; audit findings closed; issuer questions answered; exit route confirmed per name |
 | 1 (~100 assets) | Prime hub plus 3 band hubs; both Earn vaults | Check script passes; alerts live |
 | 2 (→ 500 assets) | More names; more hubs per band if needed | — |
 
@@ -424,12 +424,12 @@ These replace D5, D6, D8 and D13–D17 of the zero-contract design and add D19. 
 | D5 | Listing | Instant, by `MS_OPS` through P5 (add-only); overwrites timelocked |
 | D6 | `adminSetPrice` | Oracle Safe through P3: within ±X% instant; larger moves delayed or second-approved; on-call signer rota |
 | D8 | Issuer pause windows | On-chain through P2, plus app and SDK; alerts matched to schedules |
-| D13 | Oracle admin | Decided: P3, with second-Safe approval of queued `adminSetPrice`. Open: the instant band ±X% and the delay (constructor parameters) |
-| D14 | Keeper slot | Proposed: P4 with several keys. Open: the pause budget N and its window |
-| D15 | Hub and escrow hooks | Proposed: P1 on every hub, P2 on every escrow. Open: the hourly borrow limit per hub and its window; whether to enable the account debt cap |
-| D16 | Origination fee | Proposed: enforced by P1, per hub; rates and the on-chain maximum to set (or 0 at launch) |
-| D17 | Sanctions | Proposed: P1 and P2 screen borrowers, receivers and depositors. Open (counsel): whether P2's account freeze exists |
-| D19 | Contract set | Open: which of P1–P5 to build, and whether before or after launch (audit budget). Recommended: launch zero-contract, then P3, P1, P4, P5, P2 (`docs/Overview.md`) |
+| D13 | Oracle admin | Decided: P3, with second-Safe approval of queued `adminSetPrice`. Instant band ±X% and delay: POP-44 |
+| D14 | Keeper slot | Open: POP-45 |
+| D15 | Hub and escrow hooks | Open: POP-46 |
+| D16 | Origination fee | Open: POP-47 |
+| D17 | Sanctions | Open: POP-55 |
+| D19 | Contract set | Open: POP-50 |
 
 ## Known blockers and limitations
 
@@ -458,6 +458,4 @@ In addition to the zero-contract design's "Stale prices" expectation:
 - **Pause windows:** deposits and withdrawals of a name revert during its issuer's published pause windows (P2), for direct calls too. Borrowing, repaying and liquidation continue.
 - **Changes:** tightening takes effect immediately. Listings are immediate; route overwrites wait for P5's delay; risk raises are immediate unless D12 is timelocked; large oracle admin price writes wait for P3's delay.
 
-## Deferred
-
-As in the zero-contract design (dividend capture, a Poppie-run liquidator), plus any peripheral contract not built at launch (D19).
+Open items: tracked in Linear, project Euler v2 (Poppie).

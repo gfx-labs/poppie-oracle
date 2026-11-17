@@ -54,9 +54,9 @@ Both designs reuse Poppie's audited BSC oracle unchanged and the standard Euler 
 
 | | Zero-contract | Peripheral-contract |
 | --- | --- | --- |
-| Contract audit | None (oracle and adapter already audited) | **TBD**: about 5 small contracts plus their Euler integration |
-| Engineering | Deployment scripts, keeper, monitoring | The same, plus writing and testing 5 contracts: **TBD** |
-| Launch delay | None | **TBD**, or none if contracts are added after launch |
+| Contract audit | None (oracle and adapter already audited) | About 5 small contracts plus their Euler integration; cost not yet estimated (POP-17) |
+| Engineering | Deployment scripts, keeper, monitoring | The same, plus writing and testing 5 contracts; estimate: POP-89 |
+| Launch delay | None | Estimate: POP-89; none if contracts are added after launch |
 | Running cost | Keeper about 0.00009 ETH per run at today's gas (71 names) | Slightly more gas per borrow, deposit and price push |
 | Operations | Daily automated cap raises; large oracle fixes need the full oracle multisig | No daily raises; small oracle fixes instant; more keys to hold |
 
@@ -73,14 +73,6 @@ Both designs reuse Poppie's audited BSC oracle unchanged and the standard Euler 
 1. **No issuer has a usable market on Arbitrum yet.** xStocks (Backed) is the only launch candidate. Its only exit is Backed's own inventory: up to $1M per trade on major names in market hours, about $10k on smaller names overnight, and nothing at weekends. Poppie runs no liquidator; third parties must step in. Exposure is limited by capping each name to the exit that exists.
 2. **Price coverage.** Chainlink covers 71 xStocks names on Arbitrum, below the ~100 planned for launch. No second price source quotes overnight, so names are not priced (and cannot be borrowed against or liquidated) overnight until one does.
 3. **Issuer keys.** Single issuer keys can change a token's share multiplier instantly, and Robinhood's can burn tokens from any holder. This has gone wrong: HONx was halved for 8 h 25 min, and a SOXX split was applied a day early. Poppie's price keeper blocks unexplained changes; per-issuer caps limit the rest.
-4. **Corporate actions.** Mergers and delistings require winding a name down before the issuer's deadline, which is not yet known.
+4. **Corporate actions.** Mergers and delistings require winding a name down before the issuer's deadline.
 
-## Decisions needed
-
-| Decision | Options |
-| --- | --- |
-| Which design to launch with (D19) | Zero-contract now and contracts later (recommended), or build some contracts first |
-| Risk appetite (D18) | Largest acceptable loss per issuer and per event, and the loss-reserve size. Caps are sized from these. **Not set** |
-| Oracle admin (D13) | Multisig (instant, unbounded) or timelock (bounded, every fix delayed); or P3 |
-| Launch scope | Cap phase 1 at Chainlink's 71 names, or wait for more feeds |
-| Sanctions (D17) | App screening only, or on-chain blocking; whether an account freeze should exist (legal) |
+Open items: tracked in Linear, project Euler v2 (Poppie).
