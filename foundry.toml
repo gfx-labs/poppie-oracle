@@ -50,3 +50,20 @@ remappings = [
     "ethereum-vault-connector/=lib/euler-price-oracle/lib/ethereum-vault-connector/src/",
     "@solady/=lib/euler-price-oracle/lib/solady/src/",
 ]
+
+# ── Peripheral contracts P1–P5 (src/peripheral) ────────────────────────────
+# Tests live outside `test/` so `forge test` never compiles them. Kept on the
+# audited settings (shanghai) so tests run the production bytecode. EVK is not
+# in the repo yet (deferred phase E). Needs the nested libs once (see eval):
+#   FOUNDRY_PROFILE=peripheral forge test
+[profile.peripheral]
+test = "test-peripheral"
+cache_path = "cache/peripheral"
+out = "out/peripheral"
+remappings = [
+    "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+    "forge-std/=lib/forge-std/src/",
+    "euler-price-oracle/=lib/euler-price-oracle/src/",
+    "ethereum-vault-connector/=lib/euler-price-oracle/lib/ethereum-vault-connector/src/",
+    "@solady/=lib/euler-price-oracle/lib/solady/src/",
+]
