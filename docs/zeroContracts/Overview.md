@@ -10,7 +10,7 @@ USDC lending on Euler V2 (Arbitrum) against tokenized US stocks and ETFs. **Popp
 
 | Who | Can do | Limited by |
 | --- | --- | --- |
-| Price keeper (automated) | Push prices; pause a name's price | The oracle's per-update and per-day move limits |
+| Price keeper (automated) | Push prices; pause a name's price | The oracle's per-update and per-window move limits |
 | Emergency key (on call) | Lower caps and LTVs, or freeze a vault, in seconds | Euler: can only tighten |
 | Cap steward key (automated) | Routine cap changes | Euler: a bounded step per interval |
 | Oracle multisig | Any price or oracle setting | **Nothing**, unless every action is put behind a delay |
@@ -31,7 +31,7 @@ USDC lending on Euler V2 (Arbitrum) against tokenized US stocks and ETFs. **Popp
 - **A compromised oracle multisig can set any price instantly**, unless every fix is delayed. This is the largest unbounded risk.
 - A stolen price keeper key can wipe every price.
 - Borrowing bursts are limited only by keeping caps tight, which means daily cap raises and "cap reached" errors on busy days.
-- Sanctions screening, the origination fee and issuer maintenance windows are enforced only in Poppie's app; direct callers bypass them.
+- Sanctions screening, the origination fee and issuer maintenance windows are enforced only in Poppie's app and SDK; direct callers bypass them.
 - No way to freeze, seize or return one account's funds.
 
 ## Costs
@@ -47,13 +47,13 @@ USDC lending on Euler V2 (Arbitrum) against tokenized US stocks and ETFs. **Popp
 
 1. **Thin exit liquidity.** The only buyer for xStocks on Arbitrum is Backed's own inventory: up to $1M per trade on majors in market hours, about $10k on smaller names overnight, none at weekends. Third parties liquidate; Poppie runs no liquidator. Each name is capped at 10–20% of its exit depth.
 2. **Issuer keys** can change multipliers instantly (and at Robinhood, burn tokens). The keeper blocks unexplained changes; per-issuer caps limit the rest.
-3. **Ops multisig** holds all structural power with no notice period, and signs often, so fatigue is a risk.
+3. **Ops multisig** holds all structural power, with no notice period unless a timelock is added, and signs often, so fatigue is a risk.
 
 ## Open items
 
 1. An issuer with a usable Arbitrum market (xStocks is the only candidate).
 2. Confirm third parties can liquidate through Enso at our cap sizes.
-3. Price coverage beyond Chainlink's 71 names.
+3. Price coverage beyond Chainlink's 71 names, and an overnight second price source: names are not priced overnight until one exists.
 4. A corporate-action data feed; without it, every dividend stops that name's pricing until added by hand.
 5. Set the risk appetite (loss limits, reserve size).
 

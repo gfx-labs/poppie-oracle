@@ -2,14 +2,14 @@
 
 *Nov 16, 2026. This is the baseline design. Poppie deploys no new contracts: the audited v1 `PoppieEulerOracle` and `PoppieEulerAdapter` (tag `v1-bsc`) are redeployed unchanged, and everything else is stock Euler and Safe. The peripheral-contract design (`docs/peripheralContracts/Design.md`) is this design plus five small Poppie contracts, and documents only what differs. Executive comparison: `docs/Overview.md`.*
 
-*Evidence is cited by finding ID: XS (`docs/issuerResearch/xStocks.md`), RH (`Robinhood.md`), RE (`Reality.md`), DN and ON (`Dinari-Ondo.md`), KEEP-2 to KEEP-20 (`docs/evaluation/Keeper.md`), and A, B, DIV, PATH, PAUSE, KEEP-1 (`docs/evaluation/Contracts.md`).*
+*Evidence is cited by finding ID: XS (`docs/issuerResearch/xStocks.md`), RH (`Robinhood.md`), RE (`Reality.md`), DN and ON (`Dinari-Ondo.md`), KEEP-2 to KEEP-22 (`docs/evaluation/Keeper.md`), and A, B, DIV, PATH, PAUSE, KEEP-1 (`docs/evaluation/Contracts.md`).*
 
 ## Summary
 
 - **What:** USDC lending on Euler V2 (Arbitrum) against tokenized equities, from about 100 assets at launch toward 500.
 - **Contracts:** the v1 oracle and adapter, plus stock Euler (EVK, EulerRouter, Earn, `GovernorAccessControlEmergency`, `CapRiskSteward`, optionally `HookTargetGuardian` and timelocks), Safe, Zodiac Roles and OpenZeppelin `TimelockController`. **No new Poppie contracts.**
 - **Prices:** a keeper extended from the BSC keeper pushes one USD price per asset, used for both borrowing and liquidation, after blocking checks on the stock price and the issuer multiplier (D11).
-- **Risk:** losses are bounded by limits set in advance (supply caps, borrow-cap headroom, LTV buffers, the loss reserve). Tightening is instant through a hot key; loosening needs `MS_OPS`.
+- **Risk:** losses are bounded by limits set in advance (supply caps, borrow-cap headroom, LTV buffers, the loss reserve). Tightening is instant through a hot key; loosening needs `MS_OPS`, apart from bounded cap raises by the cap steward.
 - **Main open risk:** no issuer has a listable market on Arbitrum today; xStocks is the only launch candidate, and its exit is Backed's own inventory.
 
 | Choice | Gain | Cost |
@@ -145,7 +145,6 @@ At launch Poppie lists only tokens whose dividends are reinvested by the issuer.
 | Reality | Static raw balances (ERC-8056) since 2026-10-17, rebased before; cash (USDT0) and stock (rToken) dividends paid separately to the depositor via Merkl; withheld for unsupported protocols | The token, if listed. See `docs/issuerResearch/Reality.md` | The token. **On Arbitrum; not listable now** (D10) |
 | Others | To research | — | — |
 
-- **Ondo:** its docs do not currently list Arbitrum as a supported chain.
 - **No issuer wrapper:** for a rebasing token without one, an unmodified OpenZeppelin `ERC4626` (`decimalsOffset = 0`, with a seed deposit) is the fallback (D3).
 - **Not listed at launch:** tokens that pay dividends in cash to the holder (to revisit).
 
@@ -311,7 +310,9 @@ What it shows for Poppie:
 
 Poppie needs a legal view on whether this is enough before launch, and counsel ready for claims like the one Aave faced over the Kelp funds.
 
-## Thin liquidity and liquidations [Policy]
+## Thin liquidity and liquidations
+
+*Everything in this section is **[Policy]**.*
 
 **The risk.** Exit liquidity for tokenized stocks on Arbitrum is thin, comes almost entirely from the issuer's own inventory, and stops at weekends. Poppie runs no liquidator and has no backstop buyer. If liquidators can't or won't sell seized collateral fast enough, positions go underwater and the hub takes bad debt.
 
@@ -350,7 +351,9 @@ Poppie needs a legal view on whether this is enough before launch, and counsel r
 
 **Proposed thresholds:** blue chips: breaker 20%, cumulative cap 30%. Long tail: breaker 30% to 40%, cumulative cap 40% to 50%, by band. Tune these with gap data.
 
-### Keeper: an iteration of the BSC keeper [Policy]
+### Keeper: an iteration of the BSC keeper
+
+*Everything in this section is **[Policy]**.*
 
 v2 reuses the BSC keeper and extends it. What the BSC keeper does today, from its source:
 
@@ -360,18 +363,20 @@ v2 reuses the BSC keeper and extends it. What the BSC keeper does today, from it
 | Price | Chainlink Data Streams `midPrice` (stock price); freshest of the regular, extended and overnight feeds that is open and under 10 min old; otherwise skip and let the price go stale. Feeds fetched one at a time; schema guessed from report length | Keep. Fetch 8 feeds at a time and read the schema from the feed ID (KEEP-15). Coverage limits listings: 71 xStocks names on Arbitrum, 8 of them regular hours only (KEEP-4) |
 | Multiplier | Ondo GM API (token price ÷ stock price), falling back to Ondo's on-chain SyntheticSharesOracle. The two are never compared | Read the issuer's multiplier on-chain at one pinned block, and check it against the issuer's API (see "Price sources and cross-check"). Call Backed's API only for names with a pending or changed multiplier, or no stored multiplier, since one call per name is too slow at 500 names (KEEP-6; prototyped: a normal 71-name run makes no such calls). Keep the last accepted multiplier per name between runs (KEEP-7) |
 | Multiplier changes | Applied as they arrive; no corporate-action check, no limit | Apply only changes that match a known corporate action (see Corporate actions and the per-issuer rules) |
-| Guards | Off-chain simulation of the breaker and cumulative cap drops failing assets; a reverting batch is retried once without the asset named in the revert | Keep. Chunk batches for 500 assets |
-| Dropped assets | Logged as a warning; retried every 30 min against the same stored price; the monitor raises an error while the next price would be rejected | Page when a name is dropped on two consecutive pushes during a priced session. Planned skips never page and reset the count: market closed, a pending split, activation within 5 min (KEEP-12) |
+| Guards | Off-chain simulation of the breaker and cumulative cap drops failing assets; a reverting batch is retried once without the asset named in the revert, but the retry does not run for guard reverts (KEEP-22) | Keep, with the retry fixed and anchor rotation modelled. Chunk batches for 500 assets |
+| Dropped assets | Logged as a warning; retried every 30 min against the same stored price; the monitor raises an error while the next price would be rejected | Page when a name is skipped on two consecutive runs during a priced session, and at once when the chain rejects it (KEEP-21). Planned skips never page and reset the count: market closed, a session no second source covers, a pending split, activation within 5 min (KEEP-12) |
 | Second source | Alpha Vantage, alert-only: final price (after multiplier) vs Alpha Vantage's stock quote, 15%; missing data ignored | Blocking gate on the stock price, before the multiplier (see "Price sources and cross-check") |
-| Issuer halts | Ondo status API: an active `ASSET_PAUSED` makes the keeper call `pauseAssets`, wiping the price; if the API fails, pricing continues | Don't pause on-chain for scheduled issuer windows; skip pushes for that name instead (see "Issuer pause windows"). `pauseAssets` stays for emergencies |
-| Failure handling | Three failed runs in a row trip a halt latch; pushes stop until a person clears it. One asset's multiplier fetch error fails the whole run | Keep the latch, but count only infrastructure failures (RPC, signer, no chunk landing). Any per-name failure skips only that name (KEEP-8) |
+| Issuer halts | Ondo status API: an active `ASSET_PAUSED` makes the keeper call `pauseAssets`, wiping the price; if the API fails, pricing continues | Never pause the oracle for an issuer pause; skip any name whose token or wrapper is paused on-chain (see "Issuer pause windows"). `pauseAssets` stays for emergencies |
+| Failure handling | Three failed runs in a row trip a halt latch; pushes stop until a person clears it. One asset's multiplier fetch error fails the whole run | Keep the latch for run-level failures only: RPC, signer, no chunk landing, keeper-address mismatch, low keeper balance, unreadable keeper state. Any per-name failure skips only that name (KEEP-8) |
 | Signing and RPC | KMS HSM key; reads need a majority of several RPC endpoints | Keep. Add a timeout per signature: the KMS client retries an outage for up to 60 s per call (KEEP-9) |
 | Alerting | Structured logs; any ERROR log alerts by email and Discord | Keep; add the alerts in Monitoring |
-| Sequencer | — | No push while Arbitrum's sequencer is down, or within a grace period after it restarts (KEEP-17) |
+| Sequencer | — | No push while Arbitrum's sequencer is down, or within 20 min after it restarts (KEEP-17) |
 
-A prototype of this keeper runs on an Arbitrum fork against the real xStocks contracts (oracleSystem branch `v2`; KEEP-2 to KEEP-20).
+A prototype of this keeper runs on an Arbitrum fork against the real xStocks contracts (oracleSystem branch `v2`; KEEP-2 to KEEP-22). It was reviewed against this section on 2026-11-16 and the differences fixed (KEEP-21).
 
-### Price sources and cross-check [Policy]
+### Price sources and cross-check
+
+*Everything in this section is **[Policy]**.*
 
 **BSC today:**
 - The keeper compares the final price with Alpha Vantage's stock quote and logs an error above 15%.
@@ -389,10 +394,10 @@ A prototype of this keeper runs on an Arbitrum fork against the real xStocks con
   - The on-chain multiplier must match the issuer's published value (Backed's multiplier endpoint, Robinhood's `/corporate-actions`), within rounding.
   - Any change must match a known corporate action (Corporate actions, item 3).
   - On a mismatch: skip and alert.
-- **Tolerance:** per session, tighter in regular hours than in extended and overnight sessions. Comparing stock to stock, without the multiplier, lets it be far tighter than BSC's 15%. Calibrate it from shadow recordings of the chosen vendors, and a replay of Data Streams against them, before launch; BSC's Alpha Vantage history may be empty (KEEP-3). First research data (Yahoo vs Nasdaq, KEEP-18): 99% of pairs agree within 0.17% in regular hours but only within 1.4% in extended hours, worst case 6.6%. So regular hours can be tight (about 2%), while extended-hours tolerances should depend on the name's liquidity. Neither source quotes overnight.
+- **Tolerance:** per session, tighter in regular hours than in extended and overnight sessions. Comparing stock to stock, without the multiplier, lets it be far tighter than BSC's 15%. Calibrate it from shadow recordings of the chosen vendors, and a replay of Data Streams against them, before launch; BSC's Alpha Vantage history may be empty (KEEP-3). First research data (Yahoo vs Nasdaq, KEEP-18): 99% of pairs agree within 0.17% in regular hours but only within 1.4% in extended hours, worst case 6.6%. So regular hours can be tight (about 2%), while extended-hours tolerances should depend on the name's liquidity. The prototype uses 2% and 3% as placeholders. Neither source quotes overnight.
 - **No second-source data:**
   - The gate fails closed: no fresh, agreeing quote means no push for that name, and the price goes stale after `maxPriceAge`.
-  - So the keeper prices a name only in sessions its second source covers. Alpha Vantage covers 04:00–20:00 ET, so overnight pricing needs a second source that covers it, or none is priced overnight.
+  - So the keeper prices a name only in sessions a configured second source covers. Alpha Vantage covers 04:00–20:00 ET, so **overnight is not priced** until a source that covers it is added. An uncovered session is a planned skip: the name goes stale and nothing pages.
 - **Outages:** use two second sources (the BSC keeper already has code for Polygon as well as Alpha Vantage). Push if at least one fresh source agrees and none disagrees. Page when every second source is unavailable during a priced session; at `maxPriceAge` 1 h, every name goes stale within the hour.
 - **Split days:** no exception. If one source switches to split-adjusted prices before the other, the gate blocks and alerts, and the name goes stale briefly. Both sources usually switch together at the ex-date open, so the stock price gate passes. Only the multiplier gate can then catch the gap: the keeper skips a name while Backed shows a pending `Split` or `ReverseSplit` (fork-tested, KEEP-10).
 
@@ -424,7 +429,9 @@ While a name is stale, for any account holding it as collateral:
 
 Size LTV buffers for weekend gaps, and size caps so third-party liquidators can absorb the Monday open. Liquidation discounts must also cover a liquidator holding seized stock until Backed quotes again; Backed gives no executable quotes at weekends.
 
-### Corporate actions [Policy]
+### Corporate actions
+
+*Everything in this section is **[Policy]**.*
 
 1. **Before the event:** drive this from market data (company announcements and ex-dates), not from the issuer's multiplier schedule: Backed's notice can be 15 minutes, too short for a Safe. Freeze the name's escrow supply cap. Cut its borrow LTV only if needed: a cut freezes every indebted account that relies on that name (see "Pauses").
 2. **Breaker:** while a split of ratio r is pending, keep that name's breaker below the move a mis-push would cause, 1 − 1/r. For example, below 33% for a 3:2 split.
@@ -432,9 +439,9 @@ Size LTV buffers for weekend gaps, and size caps so third-party liquidators can 
    - read the activation time on-chain (`newMultiplierActivationTime`, `newMultiplier`); it varies, e.g. 23:55 and 13:45 UTC on SPYx. Poll these rather than rely on `multiplierUpdates` or events: 87% of xStocks tokens on Arbitrum run an older implementation with no history and no `MultiplierScheduled` events (KEEP-5). For xStocks, fetch Backed's multiplier endpoint for the `reason` whenever a change is pending; notice can be as short as 15 minutes, so this is automated in the keeper;
    - react to replaced schedules (a pending value or time that changes, or `MultiplierScheduleOverridden` on the newer implementation);
    - **splits:** don't push while a split is pending on-chain (from scheduling to activation), so the name goes stale briefly rather than mispriced. Skip any name whose activation falls within 5 minutes of the read block (KEEP-12);
-   - **reinvested dividends:** accept the dip of about the dividend size until activation; it undervalues collateral and stays below the breaker. Match the change to the calendar using the dividend net of withholding (AAPLx's 2026-11-12 step matched AAPL's dividend net of 30% US withholding, KEEP-19). Backed activates them overnight (01:30 UTC in that case), so the calendar entry must exist before the overnight session;
+   - **reinvested dividends:** accept the dip of about the dividend size until activation; it undervalues collateral and stays below the breaker. Calendar entries must give the ratio net of withholding; the keeper matches the ratio it is given (AAPLx's 2026-11-12 step matched AAPL's dividend net of 30% US withholding, KEEP-19). Backed activates them overnight (01:30 UTC in that case), so the calendar entry must exist before the overnight session;
    - **spin-offs (xStocks):** so far Backed has folded the spin-off's value into the parent's multiplier (CMCSAx +4.7% after the Versant spin-off, XS-11); no second token was delivered. Accept a rise of about the spin-off's value on or after the distribution date;
-   - reject any multiplier change that doesn't match a known corporate action (alert, don't push). For xStocks, that includes any `Administrative` reason and any on-chain schedule with no API entry. A HONx halving in June 2026 would have passed the breaker (XS-13). Backed's API reported the same values, so only the corporate-action calendar catches this (KEEP-11);
+   - reject any multiplier change that doesn't match a known corporate action (alert, don't push). For xStocks, that includes any `Administrative` reason and any on-chain schedule with no API entry. A HONx-style halving (−50%) would pass a 5000 bps breaker, as used on BSC, though not this plan's proposed 20% blue-chip breaker (XS-13). Backed's API reported the same values, so only the corporate-action calendar catches this (KEEP-11);
    - **the calendar:** a market-data source of splits, dividends and spin-offs, with ex-dates and ratios, plus a reviewed file for manual approvals. Every reinvested dividend changes the multiplier, so without a feed each one stops pricing until someone adds it. The vendor is not chosen yet (KEEP-14).
 4. **Large moves:** reverse splits, or gaps beyond the breaker, go through a pre-built `adminSetPrice` batch.
 5. **Mergers, delistings and token migrations** (and any spin-off not handled through the multiplier): Backed handles these case by case and says users are made whole, with notice that depends on when Backed learns of the event. No mechanism or minimum notice is committed. On-chain, no merger or delisting with outside holders has completed yet; when Backed drops a token, the old contract stays live and nothing is burned or converted (XS-12). Kenvue (KVUEx, being acquired by Kimberly-Clark) is the first pending case: the API already shows it as redemption-only and halted. **Payouts do not reach V2 wrapper holders:** Backed requires holders to unwrap, and offers a way to sell the token (Atomic RFQ through protocols, or other ways). Poppie's escrows hold wrapper shares, so every position in the name must be closed or liquidated, and the wrapper redeemed, before the event. Robinhood's API lists these event types but marks none active, and their payout to contract holders is undocumented. So, for any such event, from either issuer, announced or detected from market data:
@@ -448,17 +455,15 @@ Flash loans of hub USDC are left at the EVK default (on, free), so third-party l
 
 - **Origination fee (SDK only, D16):** Poppie's app and SDK add a second borrow in the same EVC batch, `hub.borrow(fee, feeReceiver)`, next to the user's `hub.borrow(amount, receiver)`. The fee becomes part of the user's debt, so a first-time borrower needs no USDC up front, and no Poppie contract holds funds. Nothing enforces it: direct callers, other front ends and aggregators pay no fee. Plan revenue on the interest fee and rate floor; treat the origination fee as extra.
 
-## Issuer pause windows [Policy]
+## Issuer pause windows
 
-Issuers pause assets on-chain for scheduled operations. Example: Ondo pauses with reason `ASSET_PAUSED` for 20 minutes (00:52–01:12 UTC, weekdays) to apply its daily dividend share-multiplier update.
+Issuers pause assets on-chain for scheduled operations. Example: Ondo pauses with reason `ASSET_PAUSED` for 20 minutes (00:52–01:12 UTC, weekdays) to apply its daily dividend share-multiplier update. xStocks publishes no pause schedule; its multipliers activate without a pause.
 
-- **Schedule:** the back end loads each issuer's pause schedule (status API, or on-chain schedules such as xStocks' `multiplierUpdates`) and serves it to the app and SDK.
-- **App:** during a window, plus a few minutes' buffer, deposit and withdraw for that name are disabled, with a banner.
-- **SDK:** deposit and withdraw calls for that name throw a typed error during a window. Borrow, repay and liquidation are unaffected.
+- **App and SDK [Policy]:** where an issuer publishes windows, the back end loads them and the app disables deposit and withdraw for that name during a window plus a few minutes' buffer, with a banner; the SDK throws a typed error. Borrow, repay and liquidation are unaffected.
 - **On-chain:** the issuer's own pause enforces the freeze, since token transfers revert. Poppie does not block direct contract calls.
-- **Pricing:** the keeper skips pushes for that name during the window, and applies the issuer's new multiplier from its activation time. Daily dividend changes are far below the breaker.
-- **No on-chain pause:** unlike the BSC keeper, which calls `pauseAssets` when Ondo reports `ASSET_PAUSED`, the v2 keeper doesn't pause the oracle for scheduled windows: a pause wipes the price and needs the Oracle Safe to re-seed it (PAUSE-1).
-- **Notify:** an issuer pause inside a known window is logged, not paged. An unscheduled pause, or one that outlasts its window, pages on-call (see Monitoring).
+- **Pricing:** the keeper reads each token's and wrapper's pause flag at the pinned block and skips any paused name. It applies the issuer's new multiplier from its activation time. Daily dividend changes are far below the breaker.
+- **No oracle pause:** unlike the BSC keeper, which calls `pauseAssets` when Ondo reports `ASSET_PAUSED`, the v2 keeper never pauses the oracle for an issuer pause: a pause wipes the price and needs the Oracle Safe to re-seed it (PAUSE-1).
+- **Notify:** an issuer pause skips the name and pages on the second consecutive run (about 30 minutes), whether scheduled or not, because the keeper has no schedule input. Ondo's 20-minute window would therefore not page; a longer scheduled window would. A schedule-aware keeper that only logs pauses inside a known window is an open gap, needed once an issuer with longer published windows is listed.
 
 ## Contracts Poppie deploys on Arbitrum
 
@@ -477,7 +482,8 @@ No Poppie-written contract is deployed. Euler's governance contracts are used as
 | Euler Earn vaults | Euler Earn `b2fd6e6` | 2 | Owner and curator: `MS_OPS` |
 | Emergency governor | Euler `GovernorAccessControlEmergency` (D12) | 1, as `governorAdmin` of every vault | Roles: `MS_OPS` (or its timelock), emergency key |
 | Cap steward | Euler `CapRiskSteward` | 1 | Cap steward key, within its factor |
-| Timelocks (optional) | OZ `TimelockController`, via Euler's factory | 0 or 2 | Proposer: `MS_OPS` |
+| Timelocks (optional, D12) | OZ `TimelockController`, via Euler's factory | 0 or 2 | Proposer: `MS_OPS` |
+| Oracle timelock (optional, D13 option B) | OZ `TimelockController` | 0 or 1 | Proposer: Oracle Safe; canceller: a second Safe |
 | Hub guardian (optional, D15) | Euler `HookTargetGuardian` | 1 | Guardian key |
 | Keeper Safe (optional, D14) | Safe + Zodiac Roles | 1 | Keeper keys may call only `keeperPushPrices`, `pauseAssets` |
 | Oracle Safe, `MS_OPS`, reserve Safe | Safe | 3 | Their signers |
@@ -528,7 +534,7 @@ Two settings for `MS_OPS`'s own calls (D12):
 
 | Setting | Effect |
 | --- | --- |
-| **Instant** (governor deployed directly; `MS_OPS` holds the roles) | Listings, LTV raises and fixes are instant, as in the original plan. Gains the emergency key and the steward only |
+| **Instant** (governor deployed directly; `MS_OPS` holds the roles) | Listings, LTV raises and fixes are instant. Gains the emergency key and the steward only |
 | **Timelocked** (Euler's factory; ≥ 1 day) | Every loosening change is public for the delay and cancellable. Listings and LTV raises wait for it; tightening stays instant through the emergency roles |
 
 | Component | How its access is set | Holder |
@@ -615,7 +621,7 @@ The engine watches exit liquidity, volatility, earnings and corporate actions, m
 ## Listing
 
 1. The engine assigns the name a class, band and hub, after the issuer checks.
-2. A deployer key creates the escrow vault from Euler's factory, makes the seed deposit and hands governance to `MS_OPS`.
+2. A deployer key creates the escrow vault from Euler's factory, makes the seed deposit and hands governance to Euler's emergency governor (D12).
 3. The Oracle Safe calls `configureAssets` and `adminSetPrice`. From then on the keeper pushes the asset, so its price is fresh when the route goes live. `registerBase` needs the asset configured, not a live price.
 4. An `MS_OPS` batch:
    - registers the base on the adapter;
@@ -630,20 +636,18 @@ Before each batch, a config-check script verifies:
 - wrappers are never resolved vaults;
 - escrows come from Euler's factory;
 - caps are finite;
-- the name's issuer pause schedule is loaded and served to the app and SDK.
+- the name's issuer pause schedule, if the issuer publishes one, is loaded and served to the app and SDK.
 
 There is no on-chain notice period unless D12 is timelocked, in which case each listing waits for the delay. The config-check script and decoded, simulated review of every batch are the protection **[Policy]**.
 
 ## Monitoring
 
-The peripheral design adds alerts for its contracts.
-
 - **Prices:**
   - stale prices during market hours (a keeper outage);
-  - rejected pushes;
-  - a name dropped by the guard check on two consecutive pushes during a priced session (the BSC keeper only logs this);
+  - a name rejected on-chain (dropped from a reverted batch), at once;
   - stock-price or multiplier gate failures, and every second source being unavailable during a priced session (D11);
-  - a name skipped twice in a row in a priced session for any unplanned reason. Planned skips (market closed, pending split, activation within 5 min) only log (KEEP-12);
+  - a name skipped twice in a row in a priced session for any unplanned reason, including the off-chain guard check. Planned skips (market closed, a session no second source covers, pending split, activation within 5 min) only log (KEEP-12);
+  - multipliers accepted without keeper state (first run, or state lost), once per run (KEEP-7);
   - every `AdminPriceForced`.
 - **Risk metrics:** R1–R10 above 80% of target (alert) or 100% (page), every run (see "Risk metrics").
 - **Oracle admin:** any threshold, staleness, window or keeper change; any queued call (if D13 is a timelock).
@@ -657,17 +661,17 @@ The peripheral design adds alerts for its contracts.
   - freezes or blacklisting of Poppie's wrapper or escrow addresses;
   - proxy upgrades of issuer tokens and wrappers (xStocks: `Upgraded` on the token and wrapper ProxyAdmins);
   - liquidation exit routes: `AddressDisallowed` for Enso's executor on Backed's `AtomicSwap`, `AtomicSwap` paused or upgraded, and no sell quote from Enso or 0x for a priced name during a priced session (page);
-  - token or wrapper pause (`PauseModeChange`). Inside a scheduled window: log only. Outside one, or lasting past its end: page;
-  - an issuer pause schedule that changes or cannot be fetched;
+  - token or wrapper pause (`PauseModeChange`): the keeper skips the name and pages on the second run (see "Issuer pause windows");
+  - for issuers that publish pause windows: a schedule that changes or cannot be fetched;
   - changes to the multiplier updater, fee parameters or sanctions list;
   - every scheduled, overridden or applied multiplier change. Backed's notice is normally about 2 hours but can be 15 minutes, so watch the chain and poll Backed's multiplier endpoint. Page on an `Administrative` reason, an on-chain schedule with no API entry, or a change of more than 10% with no matching split or spin-off. Poll on-chain schedules (`newMultiplierActivationTime`), because 87% of tokens emit no schedule events (KEEP-5);
   - Arbitrum's current or pending multiplier differing from Ethereum's for the same name (page if over 1%);
   - a listed name losing `Issuance` from `allowedOperations`, or being marked `isTradingHalted`, in Backed's API (wind-down signal);
   - Robinhood: every `UIMultiplierUpdated`; any change with no matching `/corporate-actions` entry (page); `oraclePaused` set outside a known corporate action; any burn from a Poppie escrow (page); registry role changes, `Upgraded`, registry pause and blocklist entries for Poppie addresses;
-  - wrapper `convertToAssets(1e18)` differing from the token's `getCurrentMultiplier()`.
+  - wrapper `convertToAssets(1e18)` differing from the token's `getCurrentMultiplier()`; the keeper also skips that name and pages.
 - **Earn:** any configuration change (caps, queues, curator, timelock).
 - **USDC:** peg moves above 2%, since the USDC/USD route is a fixed rate.
-- **Arbitrum sequencer:** downtime. After a restart the keeper waits N minutes before pushing, so users can act before liquidations resume.
+- **Arbitrum sequencer:** downtime (the keeper logs it at ERROR). After a restart the keeper waits 20 minutes before pushing, so users can act before liquidations resume.
 
 ## Audits
 
@@ -681,13 +685,13 @@ The peripheral design adds alerts for its contracts.
 
 | Phase | Scope | Gate to next phase |
 | --- | --- | --- |
-| 0 | Keeper extended from BSC (multiplier and stock-price gates, per-issuer rules, chunking): **prototyped** on an Arbitrum fork against the real xStocks contracts (KEEP-2 to KEEP-20); still to do: live vendor data, a corporate-action feed, an issuer interface, production wiring and state storage, the v2 monitor. Fork test that a third party can liquidate through Enso (liquidate, unwrap, sell, repay). EVK harness and Arbitrum fork tests: stale-price and cap behaviour, Earn accepting the hubs, 300+ LTV entries in one hub, `ProtocolConfig` values. (A real xStocks multiplier change through the router and adapter already passes: `eval/fork/`) | All pass; issuer questions answered; exit route confirmed per name |
+| 0 | Keeper extended from BSC (multiplier and stock-price gates, per-issuer rules, chunking): **prototyped** on an Arbitrum fork against the real xStocks contracts (KEEP-2 to KEEP-22); still to do: live vendor data, a corporate-action feed, an issuer interface, production wiring and state storage, the v2 monitor. Fork test that a third party can liquidate through Enso (liquidate, unwrap, sell, repay). EVK harness and Arbitrum fork tests: stale-price and cap behaviour, Earn accepting the hubs, 300+ LTV entries in one hub, `ProtocolConfig` values. (A real xStocks multiplier change through the router and adapter already passes: `eval/fork/`) | All pass; issuer questions answered; exit route confirmed per name |
 | 1 (~100 assets) | Prime hub plus 3 band hubs; both Earn vaults | Check script passes; alerts live |
 | 2 (→ 500 assets) | More names; more hubs per band if needed | — |
 
 ## Decisions
 
-The peripheral design overrides D5, D6, D8 and D12–D17, and adds D19.
+The peripheral design overrides D5, D6, D8 and D13–D17. D19 (which peripheral contracts to build, and when) is decided in `docs/Overview.md`; launching this design means building none at first.
 
 | ID | Decision | Status |
 | --- | --- | --- |
@@ -698,7 +702,7 @@ The peripheral design overrides D5, D6, D8 and D12–D17, and adds D19.
 | D5 | Listing | Decided: instant, by `MS_OPS` (waits for the delay if D12 is timelocked) |
 | D6 | `adminSetPrice` | Decided: Oracle Safe only, with an on-call signer rota |
 | D7 | Oracle instances | Decided: one |
-| D8 | Issuer pause windows | Decided: off-chain. App and SDK block deposit and withdraw during issuer windows; the issuer's on-chain pause enforces; alerts matched to schedules |
+| D8 | Issuer pause windows | Decided: off-chain. App and SDK block deposit and withdraw during published windows; the issuer's on-chain pause enforces; the keeper skips paused names and pages on the second run |
 | D9 | Liquidations | Decided: no onboarding with any issuer (legal), and no Poppie-run liquidator at launch. Liquidations are left to third parties, who can reach Backed's inventory through Enso, 0x or CoW without onboarding. Thin liquidity is managed with caps, discounts, buffers and the reserve (see "Thin liquidity and liquidations"). A Poppie liquidator is deferred |
 | D10 | Reality rTokens | Proposed: not now. Revisit with third-party liquidity, verified source, a beacon timelock and answers on mergers and dividends |
 | D11 | Second price source | Decided: blocking gates. The stock price must agree with an independent source before the multiplier is applied, and the multiplier must agree with the issuer's API. Either failing skips the name and alerts. Fails closed without fresh data. BSC's check is alert-only. Vendors to choose after checking coverage (overnight in particular). See "Price sources and cross-check" |
@@ -712,7 +716,7 @@ The peripheral design overrides D5, D6, D8 and D12–D17, and adds D19.
 
 ## Known blockers and limitations
 
-Ranked by likely impact. Items 10–13 apply to this design only; the peripheral design replaces them.
+Ranked by likely impact. The peripheral design keeps items 1–6, changes 7–9 and replaces 10–13.
 
 1. **No issuer currently has a listable market on Arbitrum.**
    - xStocks' contracts fit, but over 99% of supply is Backed inventory, the V2 wrappers are unused and there are no DEX pools.
@@ -720,7 +724,7 @@ Ranked by likely impact. Items 10–13 apply to this design only; the peripheral
    - Liquidation depends on third parties: atomic through Enso (allowlisted by Backed), or asynchronous through CoW. None is committed, and Backed can remove Enso without notice (D9).
    - Dinari has some activity, but its wrapper lets the issuer remove backing (`recover`), is controlled by an EOA and is barely used. Ondo is not deployed.
    - Reality is deployed (3,334 rTokens), but supply sits with Reality-linked EOAs, the only DEX depth is four ~$190k pools, and redemption is Reality-only.
-2. **Price coverage caps the listable set.** Chainlink Data Streams covers 71 of the 1,488 xStocks names on Arbitrum (KEEP-4), below phase 1's ~100. More names need more Chainlink feeds or a second primary source.
+2. **Price coverage caps the listable set.** Chainlink Data Streams covers 71 of the 1,195 USD-underlying xStocks names on Arbitrum (1,488 in all; KEEP-4), below phase 1's ~100. More names need more Chainlink feeds or a second primary source.
 3. **xStocks pricing depends on one Backed EOA.** The `multiplierUpdater` is a single key that can set any multiplier instantly; a wrong multiplier changes the equity each wrapper share represents. It is an automated hot key with no on-chain bound on size or notice. The keeper alerts instead of pushing on unexplained changes, but users' wrapper balances already reflect it.
 4. **Robinhood keys can burn from any holder and set any multiplier.** Two EOAs can burn tokens from a Poppie escrow; one EOA can set any multiplier instantly, and SOXX's 3:1 split was applied a day early on 2026-11-04, reverted within three hours, and re-applied on 11-05. Burns are accepted as issuer risk and capped; the keeper follows only explained multiplier changes.
 5. **Corporate actions outside the multiplier are discretionary, and wrapper holders must exit first.** Backed handles mergers, spin-offs and delistings case by case, with no committed notice. Payouts do not reach V2 wrapper holders: holders must unwrap. So Poppie must wind a name down, and every position must be closed or liquidated, before Backed's deadline, which is not yet known.
@@ -735,7 +739,7 @@ Ranked by likely impact. Items 10–13 apply to this design only; the peripheral
 
 ## Open gaps
 
-As of 2026-11-13. Each must be closed, or explicitly accepted, before listing.
+As of 2026-11-16. Each must be closed, or explicitly accepted, before listing.
 
 **Issuers and markets**
 
@@ -743,13 +747,14 @@ As of 2026-11-13. Each must be closed, or explicitly accepted, before listing.
    - Backed's quote size and weekend hours, answered: up to $1M per trade on majors in market hours, down to $10k on long-tail names overnight, none at weekends;
    - whether Backed backstops, answered: no; solvers on CoW liquidate;
    - **D9:** whether third-party liquidators will act at launch sizes; Enso's limits and hours for sells (`docs/issuerResearch/Enso-Questions.md`); a fork test that a liquidation through Enso works end to end.
-2. **xStocks follow-ups** (`docs/issuerResearch/xStocks-Backed-Questions.md`, Nov 4 list):
+2. **xStocks follow-ups** (`docs/issuerResearch/xStocks-Backed-Questions.md`, questions 9–23):
    - whether Backed's quote sizes and hours apply in full to Enso's route, and whether Backed will notify integrators before removing Enso from the allowlist;
    - whether $1M is repeatable (per hour, per day), which names count as majors, and sizes in the other sessions;
    - the unwrap deadline and notice in a merger or delisting, and what happens to wrapper shares left outstanding; how KVUEx will be settled (KMBx, cash, or both, and on which chains);
    - whether spin-offs will always be folded into the multiplier (as with Versant), and what the HONx 1.1% step on 2025-10-30 covered;
    - the cause of the HONx halving (2026-06-29, 8 h 25 min, ~5 min notice) and of the net −2.44% reset;
-   - what the `Administrative` multiplier reason covers, and how sub-15-minute schedules happened.
+   - what the `Administrative` multiplier reason covers, and how sub-15-minute schedules happened;
+   - from building the keeper: a bulk multiplier endpoint, the API rate-limit window, which clients are allowed, whether tokens on the older implementation will be upgraded, and the withholding rate behind reinvested dividends (questions 19–23).
 3. **Dinari:**
    - who holds the wrapped dShare admin role (`recover`, `setBalancePerShare`), and whether Dinari would remove or timelock `recover`;
    - whether there is a market maker for wrapped dShares on Arbitrum;
@@ -781,13 +786,14 @@ As of 2026-11-13. Each must be closed, or explicitly accepted, before listing.
    - confirm overnight coverage, quote timestamps and licence for about 500 names;
    - calibrate per-session tolerances from the shadow recordings (oracleSystem `scripts/v2/shadow`), not BSC's Alpha Vantage history, which may be empty (KEEP-3, KEEP-18).
 12. **Primary coverage:** Data Streams covers 71 xStocks names on Arbitrum, 8 of them in regular hours only (KEEP-4). Ask Chainlink about more feeds, or decide on a second primary for the rest. **Decision needed:** cap phase 1 at Data Streams coverage, or keep ~100 names as the target and treat coverage as a blocker.
-13. **Corporate-action data:** choose a vendor for splits, dividends and spin-offs, with ex-dates and amounts net of withholding; the multiplier gate depends on it (KEEP-14, KEEP-19).
+13. **Corporate-action data:** choose a vendor for splits, dividends and spin-offs, with ex-dates and amounts net of withholding (the keeper does not apply withholding); the multiplier gate depends on it (KEEP-14, KEEP-19).
 14. **Keeper state and timings:** production storage for per-name keeper state (KEEP-7); the sequencer grace period (20 min for now); a timeout per KMS signature (KEEP-9). Losing keeper state forces every name back through Backed's API on the next run, and accepts current multipliers with an alert.
-15. **Keeper build:** an issuer interface (needed before Robinhood), production wiring through `cmd/server`, and the v2 monitor.
+15. **Keeper build:** an issuer interface (needed before Robinhood), production wiring through `cmd/server`, the v2 monitor, per-name or liquidity-based extended-hours tolerances, and, if D14 chooses a keeper Safe, keeper support for it (preflight now requires the signer to be the oracle's `keeper`).
 16. **Deployment tooling:** Arbitrum deployment and configure scripts using a keystore or KMS signer (A8, A12); MultiSend batch generation for per-asset admin setters at 500 assets; a separate build profile for any new contract, and a bytecode check that the oracle and adapter match the `v1-bsc` build.
 17. **Keeper redundancy:** shared-key keeper processes with nonce coordination, and a `setKeeper` failover runbook (KEEP-1), unless D14 adds a keeper Safe.
 18. **Disclosures:** depositors forgo cash dividends while deposited; LTV buffers must exceed the largest expected dividend, including specials. Legal and tax review.
-19. **BSC check:** confirm in BSC production logs whether the Alpha Vantage cross-check has ever compared a price (KEEP-3).
+19. **BSC checks:** confirm in BSC production logs whether the Alpha Vantage cross-check has ever compared a price (KEEP-3), and fix the BSC keeper's retry after a reverted batch, which does not run for guard reverts (KEEP-22).
+20. **Issuer pause schedules:** a schedule input for the keeper, so pauses inside a published window only log, before listing an issuer whose scheduled pauses last longer than one push interval.
 
 ## Expectations for integrators
 
@@ -797,7 +803,8 @@ As of 2026-11-13. Each must be closed, or explicitly accepted, before listing.
 - **Risk limits:** set by Poppie's published policy and stock Euler settings, not by Poppie contracts. Borrow caps are kept close to current borrows and raised daily, so large borrows may hit "cap reached".
 - **Origination fee:** charged only through Poppie's app and SDK (one extra borrow in the same batch); direct calls pay none.
 - **Sanctions:** Poppie screens in its app and SDK; on-chain, only the issuer tokens' and USDC's own lists apply.
-- **Pause windows:** Poppie's app and SDK block deposits and withdrawals of a name during its issuer's published pause windows. Direct calls may revert because of the issuer's own pause. Borrowing, repaying and liquidation continue.
+- **Pause windows:** Poppie's app and SDK block deposits and withdrawals of a name during its issuer's published pause windows. Direct calls may revert because of the issuer's own pause. Borrowing, repaying and liquidation continue, but a paused name is not priced, so it can go stale.
+- **Overnight:** names are not priced in the overnight session until a second price source covers it, so they go stale overnight.
 - **Changes:** tightening takes effect immediately. Listings, route changes and risk raises are immediate too, unless D12 is timelocked.
 
 ## Deferred

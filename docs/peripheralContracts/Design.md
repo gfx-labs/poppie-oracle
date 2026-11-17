@@ -5,7 +5,7 @@
 ## Summary
 
 - **Unchanged:** the audited v1 oracle and adapter, and every stock Euler, Safe and OpenZeppelin contract. Nothing is forked or modified.
-- **Added:** five small, immutable Poppie contracts that hold no funds. Each is optional and independent.
+- **Added:** five small, immutable Poppie contracts that hold no funds. Each is optional and can be added on its own; P4's keys are managed through P3 when P3 is present, otherwise by the Oracle Safe.
 
 | Contract | Plugs into | Purpose |
 | --- | --- | --- |
@@ -23,11 +23,11 @@ The levers below are added to those of the zero-contract design. Metrics R1–R1
 
 ### Principles
 
-As in the zero-contract design, with these changes:
+The zero-contract design's four principles apply. Principle 2 (tightening is fast, loosening slow) and principle 4 ([Policy] is a promise) are unchanged; principles 1 and 3 change, and a fifth is added:
 
-1. **Losses are bounded by what is set in advance, not by how fast we react.** The Kelp/Aave attacker borrowed about $230M within minutes; a Safe takes minutes to hours to sign. Here the hourly borrow limit (P1) bounds a burst without keeping caps tight, and caps and LTVs bound the rest.
-3. **Repay and liquidation stay open.** No Poppie contract hooks repay or liquidation, and seizure transfers always pass. Only Euler's vault-wide disable stops them.
-4. **Every Poppie contract can be removed.** `MS_OPS` can uninstall a hook; each slot contract has a delayed exit back to a Safe. A contract bug costs its protection, never user funds: no Poppie contract holds or moves funds.
+- **Principle 1, losses are bounded by what is set in advance, not by how fast we react.** The Kelp/Aave attacker borrowed about $230M within minutes; a Safe takes minutes to hours to sign. Here the hourly borrow limit (P1) bounds a burst without keeping caps tight, and caps and LTVs bound the rest.
+- **Principle 3, repay and liquidation stay open.** No Poppie contract hooks repay or liquidation, and seizure transfers always pass. Only Euler's vault-wide disable stops them.
+- **Principle 5, every Poppie contract can be removed.** `MS_OPS` can uninstall a hook; each slot contract has an exit back to a Safe or key. A contract bug costs its protection, never user funds: no Poppie contract holds or moves funds.
 
 ### Risk appetite
 
@@ -117,9 +117,7 @@ Issuers pause assets on-chain for scheduled operations. Example: Ondo pauses wit
 - **Schedule:** the back end loads each issuer's pause schedule (status API, or on-chain schedules such as xStocks' `newMultiplierActivationTime`) and serves it to the app and SDK.
 - **On-chain:** the scheduler key writes each window (plus a buffer) to the escrow guard (P2), which reverts deposits and withdrawals of that name during it, for direct callers too. Liquidation seizure always passes. Windows are bounded in length and number per day; `MS_OPS` can clear them.
 - **App and SDK:** disable deposit and withdraw for that name during a window, with a banner and a typed error, so users fail early.
-- **Pricing:** the keeper skips pushes for that name during the window, and applies the issuer's new multiplier from its activation time.
-- **No oracle pause:** the keeper doesn't pause the oracle for scheduled windows: a pause wipes the price and needs the Oracle Safe to re-seed it (PAUSE-1).
-- **Notify:** an issuer pause inside a known window is logged, not paged. An unscheduled pause, or one that outlasts its window, pages on-call (see Monitoring, here and in the zero-contract design).
+- **Pricing and notification:** as in the zero-contract design: the keeper skips any name paused on-chain, never pauses the oracle (PAUSE-1), and pages on the second consecutive skip. P2's own windows (escrow deposits and withdrawals blocked) are logged, not paged.
 
 ## Contracts Poppie deploys on Arbitrum
 
@@ -138,7 +136,7 @@ Five Poppie peripheral contracts are deployed (P1–P5). They are new, immutable
 | Euler Earn vaults | Euler Earn `b2fd6e6` | 2 | Owner and curator: `MS_OPS` |
 | Emergency governor | Euler `GovernorAccessControlEmergency` (D12) | 1, as `governorAdmin` of every vault | Roles: `MS_OPS` (or its timelock), emergency key |
 | Cap steward | Euler `CapRiskSteward` | 1 | Cap steward key, within its factor |
-| Timelocks (optional) | OZ `TimelockController`, via Euler's factory | 0 or 2 | Proposer: `MS_OPS` |
+| Timelocks | OZ `TimelockController`, via Euler's factory | 1 if P5 is used (its overwrite delay), plus 0 or 2 for D12 | Proposer: `MS_OPS` |
 | P1 hub guard | **New, Poppie** | 1 | `MS_OPS`; guardian and denylist keys |
 | P2 escrow guard | **New, Poppie** | 1 | `MS_OPS`; guardian, scheduler and denylist keys |
 | P3 oracle admin guard | **New, Poppie** | 1 | Oracle Safe; guardian; second Safe |
@@ -167,7 +165,7 @@ Governance has four layers:
 
 **One oracle instance.** One oracle and one adapter handle 500 assets (A7). The blast radius of the admin and keeper slots is now bounded by P3 and P4.
 
-**Exit path.** P3 and P4 each have a delayed call that hands the slot back to a Safe (`transferAdmin` through P3's longest delay; `setKeeper` to a plain key through P3). A bug in either is fixed by moving the slot, not by upgrading the contract.
+**Exit path.** Each slot can be handed back without upgrading the contract. P3: `transferAdmin`, after P3's longest delay. P4: `setKeeper` through P3, instant to a pre-registered backup keeper, delayed to any other address.
 
 ### 2. Poppie peripheral contracts **[Poppie]**
 
@@ -212,7 +210,7 @@ Whoever holds the vault governance roles can still change every setting, includi
 
 | Need | Mechanism | Who | Instant | Side effects |
 | --- | --- | --- | --- | --- |
-| Stop new deposits of a name | P2 guardian pause; or escrow supply cap to current supply | Guardian, emergency key or `MS_OPS` | Yes | Withdrawals and liquidations unaffected |
+| Stop new deposits of a name | P2 guardian pause; or escrow supply cap to current supply | Guardian, emergency key or `MS_OPS` | Yes | Withdrawals and liquidations unaffected (to confirm on EVK) |
 | Stop new borrowing against a name | Borrow LTV lowered | Emergency key or `MS_OPS` | Yes | At 0, indebted accounts using it freeze |
 | Stop new borrowing in a hub | P1 guardian pause (renewable); or borrow cap to current borrows | Guardian, emergency key or `MS_OPS` | Yes | Repay and liquidation continue |
 | Limit borrowing speed | P1 hourly borrow limit | Always on | — | Large borrows split across hours |
@@ -274,7 +272,7 @@ Written from scratch; nothing is reused from the `scale` branch, which was a gro
 1. **Never block repay or liquidation.** `OP_REPAY`, `OP_REPAY_WITH_SHARES` and `OP_LIQUIDATE` are never hooked. A status-check hook passes when no borrow happened in the batch. On escrows, `OP_TRANSFER` passes while `evc.isControlCollateralInProgress()` (liquidation seizure).
 2. **No custody.** No contract holds user funds or can move them.
 3. **No upgrades.** Immutable code; parameters only through roles.
-4. **`MS_OPS` can always remove a hook** (`setHookConfig`). A buggy hook is fixed by uninstalling it, at the cost of losing its protection. Slot holders (P3, P4) have a timelocked exit back to a Safe.
+4. **`MS_OPS` can always remove a hook** (`setHookConfig`). A buggy hook is fixed by uninstalling it, at the cost of losing its protection. Slot holders have an exit back to a Safe or key (see "Exit path" under Governance).
 5. **Bounded roles:** hot keys can only tighten.
 
 
@@ -325,7 +323,7 @@ The guardian (or a second Safe) can cancel any queued call. Closes **G3**, Poppi
 - `pauseAssets` by keepers is limited to N assets per day. Today a stolen keeper key can pause every asset and wipe every price.
 - A guardian revokes a key instantly; the Oracle Safe (through P3) adds keys.
 
-Closes **G4**. It is cheaper and tighter than the zero-contract Safe-plus-Roles keeper.
+Closes **G4**. Tighter than the zero-contract Safe-plus-Roles keeper (D14), which needs no new audit but cannot limit pauses.
 
 ### P5. Add-only router governor (in the router `governor` slot)
 
@@ -336,7 +334,7 @@ Closes **G6** without delaying listings, unlike the zero-contract timelock.
 
 ### Not needed as contracts
 
-- **Emergency tightening and bounded cap changes:** Euler's `GovernorAccessControlEmergency` and `CapRiskSteward`, used in both designs (G5, G12).
+- **Emergency tightening and bounded cap changes:** Euler's `GovernorAccessControlEmergency` and `CapRiskSteward`, used in both designs (G2). `MS_OPS` itself is bounded only by Euler's timelocks (G5, D12).
 - **Liquidator:** still deferred (D9). It would add no buyers.
 - **Dividend capture:** still deferred (DIV-1).
 
@@ -347,7 +345,7 @@ Closes **G6** without delaying listings, unlike the zero-contract timelock.
 3. **P4 keeper forwarder.**
 4. **P5 router governor** and **P2 escrow guard.**
 
-Each is independent; Poppie can adopt any subset and keep the rest of the zero-contract design.
+Poppie can adopt any subset and keep the rest of the zero-contract design. Only P4 relates to another contract: with P3, its keys are added through P3.
 
 ## Risk automation
 
@@ -403,32 +401,37 @@ In addition to the alerts in the zero-contract design (its "Oracle admin" alert 
 
 | Phase | Scope | Gate to next phase |
 | --- | --- | --- |
-| 0 | Keeper extended from BSC (multiplier and stock-price gates, per-issuer rules, chunking): **prototyped** on an Arbitrum fork against the real xStocks contracts (KEEP-2 to KEEP-20); still to do: live vendor data, a corporate-action feed, an issuer interface, production wiring and state storage, the v2 monitor. Fork test that a third party can liquidate through Enso (liquidate, unwrap, sell, repay). EVK harness and Arbitrum fork tests: stale-price and cap behaviour, Earn accepting the hubs, 300+ LTV entries in one hub, `ProtocolConfig` values. (A real xStocks multiplier change through the router and adapter already passes: `eval/fork/`). P1–P5 written, tested on the EVK harness and an Arbitrum fork, and audited | All pass; audit findings closed; issuer questions answered; exit route confirmed per name |
+| 0 | Keeper extended from BSC (multiplier and stock-price gates, per-issuer rules, chunking): **prototyped** on an Arbitrum fork against the real xStocks contracts (KEEP-2 to KEEP-22); still to do: live vendor data, a corporate-action feed, an issuer interface, production wiring and state storage, the v2 monitor. Fork test that a third party can liquidate through Enso (liquidate, unwrap, sell, repay). EVK harness and Arbitrum fork tests: stale-price and cap behaviour, Earn accepting the hubs, 300+ LTV entries in one hub, `ProtocolConfig` values. (A real xStocks multiplier change through the router and adapter already passes: `eval/fork/`). P1–P5 written, tested on the EVK harness and an Arbitrum fork, and audited | All pass; audit findings closed; issuer questions answered; exit route confirmed per name |
 | 1 (~100 assets) | Prime hub plus 3 band hubs; both Earn vaults | Check script passes; alerts live |
 | 2 (→ 500 assets) | More names; more hubs per band if needed | — |
 
-Alternative: launch phase 1 as the zero-contract design and add P1–P5 as each passes audit. Each is independent; P3 and P1 first, since they bound the largest risks.
+Alternative (recommended in `docs/Overview.md`): launch phase 1 as the zero-contract design and add P1–P5 as each passes audit: P3 and P1 first, since they bound the largest risks.
 
 ## Decisions
 
-These replace D5, D6, D8 and D12–D17 of the zero-contract design, and add D19. The rest apply unchanged.
+These replace D5, D6, D8 and D13–D17 of the zero-contract design and add D19. The rest, including D12 (vault governance), apply unchanged.
 
 | ID | Decision | Status |
 | --- | --- | --- |
 | D5 | Listing | Instant, by `MS_OPS` through P5 (add-only); overwrites timelocked |
 | D6 | `adminSetPrice` | Oracle Safe through P3: within ±X% instant; larger moves delayed or second-approved; on-call signer rota |
 | D8 | Issuer pause windows | On-chain through P2, plus app and SDK; alerts matched to schedules |
-| D12 | Vault governance | Proposed: Euler's `GovernorAccessControlEmergency` as every vault's `governorAdmin`, with an emergency key and `CapRiskSteward`. Open: `MS_OPS` instant, or behind Euler's timelocks (≥ 1 day) |
 | D13 | Oracle admin | Proposed: P3. Open: the instant band ±X%, the delay, and whether a second Safe can approve large moves at once |
 | D14 | Keeper slot | Proposed: P4 with several keys. Open: the daily pause budget N |
 | D15 | Hub and escrow hooks | Proposed: P1 on every hub, P2 on every escrow. Open: the hourly borrow limit per hub and its window; whether to enable the account debt cap |
 | D16 | Origination fee | Proposed: enforced by P1, per hub; rates and the on-chain maximum to set (or 0 at launch) |
 | D17 | Sanctions | Proposed: P1 and P2 screen borrowers, receivers and depositors. Open (counsel): whether P2's account freeze exists |
-| D19 | Contract set | Open: which of P1–P5 to build before launch (audit budget) |
+| D19 | Contract set | Open: which of P1–P5 to build, and whether before or after launch (audit budget). Recommended: launch zero-contract, then P3, P1, P4, P5, P2 (`docs/Overview.md`) |
 
 ## Known blockers and limitations
 
-Items 1–9 of the zero-contract design apply. Items 10–13 there are replaced by:
+Items 1–6 of the zero-contract design apply. Items 7–9 apply with these changes:
+
+7. **Gaps beyond the breaker:** a correction within ±X% is instant through P3; larger ones wait for P3's delay or a second Safe's approval, so the name stays stale longer.
+8. **`MS_OPS` signing load:** lower, since P1 removes the daily borrow-cap raises; it still signs every other risk change and corporate action.
+9. **Single admin and keeper for all names:** still one oracle, but the admin and keeper slots are bounded by P3 and P4.
+
+Items 10–13 there are replaced by:
 
 10. **`MS_OPS` holds vault power.** It can change any vault setting (instantly unless D12 is timelocked) and uninstall P1 and P2. Route overwrites wait for P5's delay. Users must trust its signers.
 11. **Keeper and oracle admin are bounded, not removed.** A stolen keeper key moves prices within the breaker and pauses up to N assets per day; a compromised Oracle Safe moves prices within ±X% per call.
@@ -437,13 +440,14 @@ Items 1–9 of the zero-contract design apply. Items 10–13 there are replaced 
 
 ## Expectations for integrators
 
-In addition to the first three expectations in the zero-contract design:
+In addition to the zero-contract design's "Stale prices" expectation:
 
+- **Price bounds:** prices are bounded per push and per window. A wrong push within those bounds goes live; an admin price write goes live at once only within ±X% of the last price (P3).
+- **Pauses:** a vault-wide disable blocks repay and liquidation while active and lasts until reversed. Guardian pauses (P1, P2) last a set time and can be renewed.
 - **Risk limits:** set by Poppie's published policy, stock Euler settings and P1–P5. New borrowing per hub is limited per hour; a large borrow may need to wait for the next window.
 - **Borrowing:** every borrow must be an EVC batch that also borrows the fee to the hub's fee receiver; a direct `borrow` reverts while a fee is set. Borrowing the full available cash is rejected.
 - **Sanctions:** borrows, borrow receivers and deposits by listed or denylisted addresses revert on-chain (P1, P2). Repay and liquidation of such accounts still work.
 - **Pause windows:** deposits and withdrawals of a name revert during its issuer's published pause windows (P2), for direct calls too. Borrowing, repaying and liquidation continue.
-- **Guardian pauses:** borrows on a hub or deposits into an escrow can be paused by a guardian for a set time, renewable.
 - **Changes:** tightening takes effect immediately. Listings are immediate; route overwrites wait for P5's delay; risk raises are immediate unless D12 is timelocked; large oracle admin price writes wait for P3's delay.
 
 ## Deferred

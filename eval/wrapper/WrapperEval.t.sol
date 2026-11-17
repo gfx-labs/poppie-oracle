@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
 
-// Design §3 C-extra: an unmodified OZ ERC4626 (decimalsOffset = 0, seed
+// C-extra (docs/evaluation/Contracts.md; questions in docs/legacy/Design.md §3): an unmodified OZ ERC4626 (decimalsOffset = 0, seed
 // deposit) over a rebasing issuer token, plus the v1 adapter pricing the
 // wrapper share. FOUNDRY_PROFILE=eval forge test
 

@@ -3,6 +3,10 @@
 Custom oracle contracts for the Poppie x Euler V2 lending market (tokenized
 US equities as collateral, USDT borrowable).
 
+Planning for Poppie v2 on Arbitrum (two candidate designs, issuer research and
+evaluation evidence) is in [`docs/`](docs/README.md); start with
+`docs/Overview.md`.
+
 ## Deployments
 
 | Network | Contract | Address |
@@ -16,7 +20,7 @@ Dev deployment parameters:
 - `maxPriceAge`: 3600s (1 hour)
 - `anchorWindow`: 86400s (24 hours)
 - `unitOfAccount`: `address(840)` (USD), 18 decimals
-- 25 Ondo GM tokens configured (matching BSC production asset set)
+- 25 Ondo GM tokens configured (the dev set; production now pushes 36, see `docs/Poppie-Team-Questions.md`)
 - Admin: `0xDDeFb8145fA286195f091E3D7749e22B53Bb28bF`
 - Keeper: `0x9e77D62f664cb1ebe40C0629841e69Dbf7f646e1` (GCP KMS)
 
@@ -135,7 +139,7 @@ forge build
 forge test
 ```
 
-127 tests across 5 test suites:
+121 tests across 4 test suites run by default (the symbolic suite runs under Halmos, not `forge test`):
 
 | File | Coverage |
 |---|---|

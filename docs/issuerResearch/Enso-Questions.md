@@ -8,7 +8,7 @@
 - **Enso is allowlisted:** your executor `EnsoShortcuts` (`0x4Fe93ebC4Ce6Ae4f81601cC7Ce7139023919E003`) has been on that allowlist since 2026-05-21. It is the largest counterparty by count: 125 of 299 swaps.
 - **Sells through Enso:** 41, totalling $62k; the largest was $38k. They came from Enso's router, 0x's AllowanceHolder, Oku's router, ERC-4337 smart wallets and other contracts, from 47 senders.
 - **Hours:** fills land on weekdays in every session, including overnight. None landed at a weekend.
-- **Quote lifetime:** in Enso's route calldata, the embedded Backed quote expires about 70 seconds after issue, and transactions land about 15 seconds after issue.
+- **Quote lifetime:** in Enso's route calldata, the embedded Backed quote expires about 70 seconds after issue (Backed describes quotes as valid about 60 seconds; XS-7), and transactions land about 15 seconds after issue.
 
 ## Questions
 

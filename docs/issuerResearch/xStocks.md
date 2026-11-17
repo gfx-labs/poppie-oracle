@@ -24,7 +24,7 @@ Read on-chain on 2026-11-02 (block ~520.7M) and exercised in `eval/fork/XStocksA
 | Token `minter` | EOA `0x0A93…4C2a` | Mint |
 | Sanctions list | Chainalysis oracle `0x40C5…C8fb` | Blocks sanctioned senders, receivers and spenders on both token and wrapper |
 
-**Multiplier updater:** an automated hot EOA. The contract bounds neither size nor notice: simulated updates of ×1000, ×0.001 and past activation times all succeed (XS-9). Observed notice on AAPLx: 0 to about 4 hours.
+**Multiplier updater:** an automated hot EOA. The contract bounds neither size nor notice: simulated updates of ×1000, ×0.001 and past activation times all succeed (XS-9). Observed notice: AAPLx 18 minutes to about 4 hours; HONx 4–6 minutes (XS-9).
 
 - **Backed's notice:** normally about 2 hours; as little as 15 minutes when its data providers deliver late. No on-chain minimum delay was offered.
 - **Schedule feed:** `GET https://api.xstocks.fi/api/v2/public/assets/{symbol}/multiplier?network=Arbitrum` returns `currentMultiplier`, `newMultiplier`, `activationDateTime` and `reason` (`FeeAccrual`, `Dividend`, `Split`, `ReverseSplit`, `Administrative`). Values are floats, so price from the on-chain multiplier and use the API for the reason.

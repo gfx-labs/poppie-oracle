@@ -204,7 +204,7 @@ contract RobinhoodEvalTest is Test {
 
     /// At 2:1 the same mistake is exactly -50% and passes a 5000 bps breaker
     /// (strict >). Keeping the breaker below 1 - 1/r while the split is
-    /// pending (plan: Corporate actions, rule 2) rejects it.
+    /// pending (docs/zeroContracts/Design.md, Corporate actions, item 2) rejects it.
     function test_RH_mispush2to1_passes5000_rejectedBelow() public {
         t.updateMultiplier(2e18, block.timestamp + 1 hours);
         vm.warp(t.effectiveAt());

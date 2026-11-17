@@ -1,6 +1,6 @@
 # Issuers on Arbitrum at a glance
 
-*Nov 5, 2026 (UTC). Poppie will not onboard directly with any issuer and runs no liquidator at launch; third parties liquidate through providers the issuer already allows, and caps limit exposure to the exit that exists (D9). Details and evidence (finding IDs in brackets): `xStocks.md`, `Robinhood.md`, `Reality.md` and `Dinari-Ondo.md` in this folder. Liquidity policy and corporate actions: `docs/zeroContracts/Design.md`.*
+*Nov 5, 2026 (UTC); updated Nov 16. Poppie will not onboard directly with any issuer and runs no liquidator at launch; third parties liquidate through providers the issuer already allows, and caps limit exposure to the exit that exists (D9). Details and evidence (finding IDs in brackets): `xStocks.md`, `Robinhood.md`, `Reality.md` and `Dinari-Ondo.md` in this folder. Liquidity policy and corporate actions: `docs/zeroContracts/Design.md`.*
 
 | | xStocks (Backed) | Robinhood Stock Tokens | Dinari | Ondo GM | Reality |
 | --- | --- | --- | --- | --- | --- |
@@ -19,7 +19,7 @@
 
 ## Main open items per issuer
 
-- **xStocks:** Backed questions 9–18 (`docs/issuerResearch/xStocks-Backed-Questions.md`), especially what wrapper holders get in a merger (KVUEx) and the HONx halving; confirm third parties can liquidate through Enso at our cap sizes (`docs/issuerResearch/Enso-Questions.md`, D9); per-session cap sizing.
+- **xStocks:** Backed questions 9–23 (`docs/issuerResearch/xStocks-Backed-Questions.md`), especially what wrapper holders get in a merger (KVUEx) and the HONx halving; confirm third parties can liquidate through Enso at our cap sizes (`docs/issuerResearch/Enso-Questions.md`, D9); per-session cap sizing.
 - **Robinhood:** Arbitrum deployment model and cross-chain sync; burn-role controls; the SOXX change (`docs/issuerResearch/Robinhood-Questions.md`).
 - **Dinari:** who holds `recover`, and whether it can be removed or timelocked.
 - **Ondo:** whether it will deploy on Arbitrum. The BSC keeper's handling of Ondo multiplier errors is open (`docs/Poppie-Team-Questions.md`).

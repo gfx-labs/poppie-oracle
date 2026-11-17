@@ -33,12 +33,12 @@ Both designs reuse Poppie's audited BSC oracle unchanged and the standard Euler 
 | G4 | **Price keeper key stolen** | Can wipe every price | Can wipe at most N prices per day | Peripheral |
 | G5 | **Ops multisig compromised** | Optional delay on loosening changes | Same | Equal |
 | G6 | **Price route overwritten** | All route changes instant, or all delayed (listings too) | Listings instant, overwrites delayed | Peripheral |
-| G7 | **Sanctioned or stolen funds** | Screened only in Poppie's app | Blocked on-chain, including direct callers | Peripheral |
-| G8 | **Issuer maintenance windows** | Blocked only in Poppie's app | Enforced on-chain | Peripheral |
-| G9 | **Origination fee** | Only charged through Poppie's app | Charged on every borrow | Peripheral |
+| G7 | **Sanctioned or stolen funds** | Screened only in Poppie's app and SDK | Blocked on-chain, including direct callers | Peripheral |
+| G8 | **Issuer maintenance windows** | Blocked only in Poppie's app and SDK | Enforced on-chain | Peripheral |
+| G9 | **Origination fee** | Only charged through Poppie's app and SDK | Charged on every borrow | Peripheral |
 | G10 | **Flash loans** | On or off | On, off, paused or charged | Peripheral |
 | G11 | **One account too large** | Alert only | Optional per-account cap (easy to dodge) | Marginal |
-| G12 | **Ops signing load** | Daily cap raises | No daily raises | Peripheral |
+| G12 | **Cap upkeep** | Borrow caps raised daily by an automated, bounded key; users can hit "cap reached" on busy days | No daily raises; large borrows may wait for the next hour | Peripheral |
 
 **Why limits set in advance matter.** In April 2026 an attacker forged about $292M of a bridged token and borrowed about $230M from Aave against it within minutes. A multisig takes minutes to hours to sign. So in both designs the real bound on a loss is the caps and limits already in place, not how fast the team reacts.
 
@@ -48,7 +48,7 @@ Both designs reuse Poppie's audited BSC oracle unchanged and the standard Euler 
 - stop an issuer from minting, burning or changing a token, beyond capping exposure to it;
 - liquidate a position while its stock market is closed, or create buyers for seized collateral;
 - block an attacker before they appear on a sanctions list;
-- stop the ops multisig changing vault settings.
+- stop the ops multisig changing vault settings (a timelock only delays it).
 
 ## Costs
 
@@ -58,11 +58,11 @@ Both designs reuse Poppie's audited BSC oracle unchanged and the standard Euler 
 | Engineering | Deployment scripts, keeper, monitoring | The same, plus writing and testing 5 contracts: **TBD** |
 | Launch delay | None | **TBD**, or none if contracts are added after launch |
 | Running cost | Keeper about 0.00009 ETH per run at today's gas (71 names) | Slightly more gas per borrow, deposit and price push |
-| Operations | Daily cap raises; oracle fixes need the full oracle multisig | Fewer routine signatures; more keys to hold |
+| Operations | Daily automated cap raises; large oracle fixes need the full oracle multisig | No daily raises; small oracle fixes instant; more keys to hold |
 
 ## Recommendation
 
-**Launch with the zero-contract design, then add peripheral contracts one at a time as each passes audit.** Each contract is independent and plugs into the core without changing it. Order by risk removed:
+**Launch with the zero-contract design, then add peripheral contracts one at a time as each passes audit.** Each contract can be added on its own and plugs into the core without changing it. Order by risk removed:
 
 1. **P3 oracle admin guard:** bounds the largest unbounded risk (G3).
 2. **P1 hub guard:** hourly borrow limit, pauses, sanctions and fee (G1, G7, G9).
@@ -71,8 +71,8 @@ Both designs reuse Poppie's audited BSC oracle unchanged and the standard Euler 
 ## Risks shared by both designs
 
 1. **No issuer has a usable market on Arbitrum yet.** xStocks (Backed) is the only launch candidate. Its only exit is Backed's own inventory: up to $1M per trade on major names in market hours, about $10k on smaller names overnight, and nothing at weekends. Poppie runs no liquidator; third parties must step in. Exposure is limited by capping each name to the exit that exists.
-2. **Price coverage.** Chainlink covers 71 xStocks names on Arbitrum, below the ~100 planned for launch.
-3. **Issuer keys.** Single issuer keys can change a token's share multiplier instantly, and Robinhood's can burn tokens from any holder. This has gone wrong: HONx was halved for 8 hours, and a SOXX split was applied a day early. Poppie's price keeper blocks unexplained changes; per-issuer caps limit the rest.
+2. **Price coverage.** Chainlink covers 71 xStocks names on Arbitrum, below the ~100 planned for launch. No second price source quotes overnight, so names are not priced (and cannot be borrowed against or liquidated) overnight until one does.
+3. **Issuer keys.** Single issuer keys can change a token's share multiplier instantly, and Robinhood's can burn tokens from any holder. This has gone wrong: HONx was halved for 8 h 25 min, and a SOXX split was applied a day early. Poppie's price keeper blocks unexplained changes; per-issuer caps limit the rest.
 4. **Corporate actions.** Mergers and delistings require winding a name down before the issuer's deadline, which is not yet known.
 
 ## Decisions needed

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
 
-// Design §3 B7 / B8 with the stock EulerRouter from lib/euler-price-oracle,
+// B7 / B8 (docs/evaluation/Contracts.md; questions in docs/legacy/Design.md §3) with the stock EulerRouter from lib/euler-price-oracle,
 // wired to the unmodified v1 adapter. The EVK escrow vault is stood in for by
 // an OZ ERC4626 (EulerRouter only calls asset() and convertToAssets() on a
 // resolved vault). EVK account checks and liquidation (B6/B7 in full) still

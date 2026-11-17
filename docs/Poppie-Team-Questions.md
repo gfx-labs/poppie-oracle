@@ -7,7 +7,7 @@
 - The keeper pushes all 36 assets every 30 minutes, 24/5. NFLX is pushed only 14:45–20:45 UTC.
 - Pushed prices are total-return: equity × Ondo's multiplier. Keeper price ÷ (Robinhood Chainlink feed ÷ Robinhood multiplier) is about 1.000 for non-payers and above 1 for payers (SPY 1.011, TSM 1.012, ORCL 1.012, MSFT 1.006).
 - Live settings: `maxPriceAge` 3600 s, `anchorWindow` 86400 s.
-- Breaker and cumulative cap per asset: 3000 bps for 8 ETF and commodity assets, 5000 for 21 assets, 7500 for 7. That is 36 assets: `script/ConfigureProd.s.sol` lists 21, so 15 were added later.
+- Breaker and cumulative cap per asset: 3000 bps for 8 ETF and commodity assets, 5000 for 21 assets, 7500 for 7. That is 36 assets: `script/ConfigureProd.s.sol` lists 21, so 15 pushed assets were added later (16 counting STRC, which is configured but not pushed).
 - **Implication:** an exact −50% multiplier error passes 5000 bps whenever equity is flat or up, and passes 7500 outright. The correct price after a reset (about +95%) passes no threshold, so the wrong price would stay live until it goes stale or the admin calls `adminSetPrice`.
 
 ## What the keeper code does
@@ -90,3 +90,5 @@ It also warns at 70% of the breaker or cap.
 9. **Integration tests.** At `3e5092e`, `go test ./test/integration` fails in all four tests. The suite deploys an older oracle (`int256` prices, a 7-field struct), while the keeper decodes the deployed packed struct (9 fields, of which it reads 8, so per-asset `maxPriceAge` overrides are never seen), and it drives Pyth while production uses Data Streams. Is there another end-to-end test the team relies on, or has this suite been failing since the packed-struct change?
 
 10. **Chainlink.** Which Data Streams plan does Poppie have, and can it cover the xStocks names on Arbitrum? Chainlink's Arbitrum catalog lists Data Streams for 71 of them. Is there a contact at Chainlink for adding feeds, and for pricing 100–500 feeds?
+
+11. **Batch retry.** In the BSC keeper, a batch that reverts on the oracle's breaker or cumulative cap is classified as `circuit_breaker`, but the retry without the failing asset only runs for `tx_revert` (`push/run.go`), so the whole push fails instead. Has a run ever failed this way in production? The off-chain guard check normally prevents it, so it may never have happened (`docs/evaluation/Keeper.md`, KEEP-22).

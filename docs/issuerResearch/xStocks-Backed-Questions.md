@@ -1,6 +1,6 @@
 # Questions for Backed (xStocks on Arbitrum)
 
-**Status (Nov 5, 2026):** questions 1–8 answered. Questions 9–18 not yet sent. Priority: 12 and 17 (what wrapper holders get in a merger), 15 (the HONx halving) and 9 (liquidating through Enso, decision D9).
+**Status (Nov 16, 2026):** questions 1–8 answered. Questions 9–23 not yet sent (19–23 added Nov 13). Priority: 12 and 17 (what wrapper holders get in a merger), 15 (the HONx halving) and 9 (liquidating through Enso, decision D9).
 
 **Decision (Nov 5):** Poppie will not onboard with Backed, or any issuer, directly (legal exposure). Backed's `AtomicSwap` allowlist already includes Enso's shared executor (`0x4Fe9…E003`, since 2026-05-21), the largest counterparty by swap count (125 of 299). So third-party liquidators can sell atomically through Enso without onboarding. Poppie runs no liquidator at launch (D9). Question 9 is rewritten accordingly.
 

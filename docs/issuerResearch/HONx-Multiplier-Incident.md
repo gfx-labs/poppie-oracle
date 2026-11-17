@@ -14,7 +14,7 @@ Backed's updater EOA scheduled HONx's multiplier to exactly half its value with 
 - Both transactions call `updateMultiplierValue(new, old, activationTime)` from `0x5F7A4c11bde4f218f0025Ef444c369d838ffa2aD`.
 - The halved value was live from 15:30 to 23:55 UTC: 8 h 25 min, covering most of the US regular session and all of the extended session.
 - The reset value is **2.44% below** the pre-halving value (0.99907 vs 1.02409). Neither step matches a corporate action we know of. Honeywell Aerospace (HONAx) was only listed on 2026-10-28.
-- Notice was about 5 minutes, below the 15-minute minimum and the 2-hour norm Backed described. Activation at 15:30 UTC is also outside Backed's documented 00:30 UTC slot.
+- Notice was about 5 minutes, below the 15-minute minimum and the 2-hour norm Backed described. Activation at 15:30 UTC is also outside Backed's documented 00:30 UTC slot, although real activation times vary (XS-6, KEEP-19).
 
 **Correction to earlier notes.** `MultiplierUpdated` is emitted lazily, on the first token interaction after activation. That is why logs show the reset on 2026-07-09 (Ethereum) and 2026-07-26 (Arbitrum). Those are not activation times. The multiplier in effect follows the activation timestamp. XS-13 and XS-14 (`docs/issuerResearch/xStocks.md`) have been corrected.
 
@@ -60,7 +60,7 @@ Reality's rHON token on Arbitrum shows a halving on the same day:
 ## What it would have done to Poppie
 
 - **Router:** the wrapper share is priced directly, so the collateral value does not move on-chain when the multiplier changes. Only a keeper push can move it.
-- **Keeper that follows the multiplier:** it pushes −50%. That passes a 5000 bps breaker and would have made HONx borrowers liquidatable during market hours. The plan's blue-chip breaker (20%) would reject it, and the name would go stale for about 8.5 hours instead.
+- **Keeper that follows the multiplier:** it pushes −50%. That passes a 5000 bps breaker and would have made HONx borrowers liquidatable during market hours. The zero-contract design's proposed blue-chip breaker (20%) would reject it, and the name would go stale for about 8.5 hours instead.
 - **Keeper rule** (apply only multiplier changes that match a known corporate action): it rejects both steps. It then has to decide whether to accept the −2.44% net change, which it cannot verify without Backed.
 - **Governance:** the 5-minute notice is too short for any Safe action. Only automated keeper rules help.
 
@@ -100,5 +100,5 @@ HONx isn't listed on BSC. The question is what would happen if Ondo's multiplier
 - The halved price would likely go live. HONx-style accounts with LTV above half the liquidation LTV become liquidatable.
 - The team is alerted within one push cycle by the Alpha Vantage check. Until the halved price passes, the monitor's rejected-price error also fires. Nothing stops the push automatically, so the exposure lasts until someone acts.
 - The correct post-reset price exceeds every breaker. The keeper drops it, and the halved price stays until it goes stale (1 h) or the Safe calls `adminSetPrice`.
-- In v2 the keeper's multiplier gate would skip the halved price: the change matches no corporate action. Its stock-price gate compares stock to stock, so it would not see this error (see the plan's "Price sources and cross-check").
+- In v2 the keeper's multiplier gate would skip the halved price: the change matches no corporate action. Its stock-price gate compares stock to stock, so it would not see this error (see `docs/zeroContracts/Design.md`, "Price sources and cross-check").
 - The v2 keeper prototype replays this on an Arbitrum fork (`TestRogueHalving`, KEEP-11 in `docs/evaluation/Keeper.md`). The halving is skipped and paged on every run, because Backed's API reports the same value and only the corporate-action calendar flags it. The real reset landed 2.44% below the earlier value, so the keeper would keep skipping HONx until someone adds a manual approval to the calendar.
