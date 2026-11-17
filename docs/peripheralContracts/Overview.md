@@ -11,17 +11,17 @@ The zero-contract design (same hubs, issuers, price keeper and liquidity policy)
 | P1 hub guard | Hourly borrow limit; renewable pause; sanctions blocking; enforced origination fee |
 | P2 escrow guard | Issuer maintenance windows and sanctions enforced on-chain; optional account freeze |
 | P3 oracle admin guard | Small price fixes instant, large ones delayed or second-approved |
-| P4 keeper forwarder | Several keeper keys; a cap on how many prices one key can pause |
+| P4 keeper forwarder | Several keeper keys; a cap, per configurable window, on how many prices the keepers can pause |
 | P5 router governor | New listings instant; changes to existing price routes delayed |
 
 ## How risk is controlled
 
 | Who | Can do | Limited by |
 | --- | --- | --- |
-| Price keepers (automated) | Push prices; pause up to N names per day | Oracle move limits; P4 |
+| Price keepers (automated) | Push prices; pause up to N names per configurable window | Oracle move limits; P4 |
 | Guardian key (on call) | Pause borrowing and deposits; cancel queued oracle changes; revoke keepers | Can only tighten |
 | Emergency and cap steward keys | As in the zero-contract design | Euler |
-| Oracle multisig | Prices and oracle settings | ±X% instant; larger moves delayed (P3) |
+| Oracle multisig | Prices and oracle settings | ±X% of a per-window reference instant; larger moves delayed or second-approved after queuing (P3) |
 | Ops multisig | Hubs, LTVs, caps, listings | Its signers; route overwrites delayed (P5); can remove the hooks |
 
 **What bounds a loss:** an hourly borrow limit per hub, plus the same caps, LTV buffers, price checks and loss reserve as the zero-contract design. Repay and liquidation are never blocked by a Poppie contract.
@@ -31,7 +31,7 @@ The zero-contract design (same hubs, issuers, price keeper and liquidity policy)
 - **A compromised oracle multisig is bounded**, while small fixes stay instant.
 - **Fast attacks are capped per hour**, without daily cap raises or "cap reached" errors.
 - A stolen keeper key can't wipe every price.
-- Sanctions, the origination fee and issuer maintenance windows are enforced on-chain, for direct callers too.
+- Sanctions, the origination fee and issuer maintenance windows are enforced on-chain, for direct callers too. Sanctions apply to direct hub and escrow deposits; Earn depositors aren't screened by P1.
 - An account freeze is available if counsel requires one.
 
 ## Cons

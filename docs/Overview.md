@@ -30,13 +30,13 @@ Both designs reuse Poppie's audited BSC oracle unchanged and the standard Euler 
 | G1 | **Fast loss** (fake collateral, bad price, stolen issuer key) | Borrow caps kept just above current borrows and raised daily | An hourly borrow limit per hub | Peripheral |
 | G2 | **Response speed** | Emergency key freezes caps or LTVs in seconds | Same, plus renewable pauses per hub and per asset | Similar |
 | G3 | **Oracle admin compromised** | Unbounded, or every fix delayed | Small moves instant, large ones delayed | **Peripheral** |
-| G4 | **Price keeper key stolen** | Can wipe every price | Can wipe at most N prices per day | Peripheral |
+| G4 | **Price keeper key stolen** | Can wipe every price | Can wipe at most N prices per budget window | Peripheral |
 | G5 | **Ops multisig compromised** | Optional delay on loosening changes | Same | Equal |
 | G6 | **Price route overwritten** | All route changes instant, or all delayed (listings too) | Listings instant, overwrites delayed | Peripheral |
-| G7 | **Sanctioned or stolen funds** | Screened only in Poppie's app and SDK | Blocked on-chain, including direct callers | Peripheral |
+| G7 | **Sanctioned or stolen funds** | Screened only in Poppie's app and SDK | Blocked on-chain, including direct callers, except deposits routed through Earn vaults | Peripheral |
 | G8 | **Issuer maintenance windows** | Blocked only in Poppie's app and SDK | Enforced on-chain | Peripheral |
 | G9 | **Origination fee** | Only charged through Poppie's app and SDK | Charged on every borrow | Peripheral |
-| G10 | **Flash loans** | On or off | On, off, paused or charged | Peripheral |
+| G10 | **Flash loans** | On or off | On, off or paused (no flash fee) | Peripheral |
 | G11 | **One account too large** | Alert only | Optional per-account cap (easy to dodge) | Marginal |
 | G12 | **Cap upkeep** | Borrow caps raised daily by an automated, bounded key; users can hit "cap reached" on busy days | No daily raises; large borrows may wait for the next hour | Peripheral |
 
