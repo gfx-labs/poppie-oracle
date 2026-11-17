@@ -15,7 +15,7 @@ Both designs reuse Poppie's audited BSC oracle unchanged and the standard Euler 
 
 | | Zero-contract | Peripheral-contract |
 | --- | --- | --- |
-| New code to audit | None | About 5 contracts, roughly 100–250 lines each (estimate) |
+| New code to audit | None | About 5 contracts, roughly 100–300 lines each (estimate) |
 | Time to launch | Sooner | Later by the build and audit time, unless the contracts are added after launch |
 | Can Poppie code block borrowing? | No | Yes, if a contract has a bug, until it is removed |
 | Integrators | Call Euler directly | Must batch each borrow with the fee (Poppie's SDK does this) |

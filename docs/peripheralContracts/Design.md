@@ -82,7 +82,7 @@ Everything in the zero-contract design (emergency key, cap steward, `pauseAssets
 
 ### What it costs
 
-- **New audit scope:** five small contracts (about 100–250 lines each, estimated) plus their integration with EVK hooks. The 2026 audit covered only the oracle and adapter.
+- **New audit scope:** five small contracts (about 100–300 lines each, estimated) plus their integration with EVK hooks. The 2026 audit covered only the oracle and adapter.
 - **A Poppie hook in the borrow and deposit path.** A bug can block borrowing or deposits until `MS_OPS` uninstalls it, and uninstalling removes its protection. Repay and liquidation are never hooked.
 - **Integration:** every borrow must be in an EVC batch with the fee borrow; a direct `borrow` reverts while a fee is set.
 - **Gas:** one extra call per hooked operation and per push.
@@ -178,6 +178,8 @@ Specifications: "Contract specifications" below. All are immutable, hold no fund
 | P3 oracle admin guard | Oracle `admin` | Oracle Safe; delays and the ±X% band set at deployment | Guardian (`pauseAssets`, cancel queued calls) |
 | P4 keeper forwarder | Oracle `keeper` | `admin` (P3 or the Oracle Safe; rotatable with `setAdmin`) adds keys, sets the budget and guardian; through P3 these are delayed, tightening included | Guardian (revoke a key) |
 | P5 router governor | `EulerRouter` governor | `MS_OPS` adds routes and resolved vaults; a timelock makes any other change | — |
+
+The P1 and P2 owner (`MS_OPS`) can rotate their roles instantly (`setOwner`, `setGuardian`, `setDenylister`, and `setScheduler` on P2).
 
 Removing a denylist entry, lifting a pause early, raising a limit or a fee, and adding a keeper are loosening and need `MS_OPS` or the Oracle Safe.
 
@@ -282,14 +284,14 @@ Hooked operations: `OP_BORROW`, `OP_FLASHLOAN`, `OP_DEPOSIT`, `OP_MINT`, `OP_SKI
 
 | Feature | Behaviour | Closes |
 | --- | --- | --- |
-| **Borrow rate limit** | On `OP_BORROW`, records the hub's `totalBorrows` before the batch's first borrow (per-batch state in plain storage, cleared at the status check). On the status check, if a borrow happened, requires net new borrows in the current window ≤ the hub's limit (for example $X per hour). Batches with no borrow always pass. A borrow reverts (`StatusCheckNotHooked`) if `OP_VAULT_STATUS_CHECK` isn't hooked | G1 |
+| **Borrow rate limit** | On `OP_BORROW`, records the hub's `totalBorrows` before the batch's first borrow (per-batch state in plain storage, cleared at the status check). On the status check, if a borrow happened, adds the batch's net borrows (the change in `totalBorrows` across the batch, so repays in the same batch net off) to the current window's total and requires it ≤ the hub's limit. The limit is per fixed window; the window length and the limit (in asset units, for example $X per hour) are set per hub. Batches with no borrow always pass. A borrow reverts (`StatusCheckNotHooked`) if `OP_VAULT_STATUS_CHECK` isn't hooked | G1 |
 | **Guardian pause** | A guardian key can pause borrows and flash loans for a set time, renewable by the guardian. A pause can only extend an existing one, and each is bounded by the immutable `maxPauseDuration` (≤ 2³²−1 s). `MS_OPS` can unpause | G2 |
 | **Sanctions screening** | On `OP_BORROW`: the account's EVC owner and the `receiver` must not be on Chainalysis's list or Poppie's denylist. On `OP_DEPOSIT`, `OP_MINT` and `OP_SKIM` (lenders): the same for the caller's EVC owner and the `receiver` | G7 |
 | **Origination fee** | Each batch with a borrow must also borrow `fee = amount × rate` to the hub's fee receiver. On `OP_BORROW`, the hook adds to "owed" (rounded up for each borrow) or "paid" (any borrow to the fee receiver) in per-batch storage. The status check requires paid ≥ owed. Borrows of `type(uint256).max` ("all cash") are rejected | G9 |
 | **Flash-loan policy** | Off / on / paused; no flash-loan fee | G10 |
 | **Account debt cap** (optional) | Debt of each borrowing account (sub-account, via `debtOf`) ≤ a set amount, checked at the status check only for accounts that borrowed in that batch. Not per EVC owner | G11 |
 
-State: per hub, the window start, the borrows at window start, the limit, the fee rate, the flash mode, the pause expiry; separately, the debt cap (`debtCap[hub]`). Per batch, in plain storage cleared at the status check: the borrowed flag, the borrows before, owed and paid.
+State: per hub, the window length and start, the net borrows counted in the window, the limit, the fee rate, the flash mode, the pause expiry; separately, the debt cap (`debtCap[hub]`). Per batch, in plain storage cleared at the status check: the borrowed flag, the borrows before, owed and paid.
 
 ### P2. Escrow guard (hook on every escrow)
 
@@ -422,7 +424,7 @@ These replace D5, D6, D8 and D13–D17 of the zero-contract design and add D19. 
 | D5 | Listing | Instant, by `MS_OPS` through P5 (add-only); overwrites timelocked |
 | D6 | `adminSetPrice` | Oracle Safe through P3: within ±X% instant; larger moves delayed or second-approved; on-call signer rota |
 | D8 | Issuer pause windows | On-chain through P2, plus app and SDK; alerts matched to schedules |
-| D13 | Oracle admin | Proposed: P3. Open: the instant band ±X%, the delay, and whether a second Safe can approve large moves at once |
+| D13 | Oracle admin | Decided: P3, with second-Safe approval of queued `adminSetPrice`. Open: the instant band ±X% and the delay (constructor parameters) |
 | D14 | Keeper slot | Proposed: P4 with several keys. Open: the pause budget N and its window |
 | D15 | Hub and escrow hooks | Proposed: P1 on every hub, P2 on every escrow. Open: the hourly borrow limit per hub and its window; whether to enable the account debt cap |
 | D16 | Origination fee | Proposed: enforced by P1, per hub; rates and the on-chain maximum to set (or 0 at launch) |

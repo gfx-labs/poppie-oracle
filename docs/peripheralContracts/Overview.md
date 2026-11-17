@@ -2,6 +2,8 @@
 
 *Nov 16, 2026. Comparison with the alternative: `docs/Overview.md`. Full detail: `docs/peripheralContracts/Design.md`.*
 
+*Status, Nov 17, 2026: P1–P5 are implemented, with unit, invariant and fork tests (mock EVK; 5 fork tests at pinned Arbitrum block 525105000). EVK integration is unverified and the contracts are not audited.*
+
 ## What it is
 
 The zero-contract design (same hubs, issuers, price keeper and liquidity policy) **plus five small Poppie contracts**. They plug into slots the existing contracts already expose, so the audited oracle and the Euler contracts stay unchanged. Each contract is optional, holds no funds, and can be removed.
@@ -46,7 +48,7 @@ The zero-contract design (same hubs, issuers, price keeper and liquidity policy)
 
 | Item | Estimate |
 | --- | --- |
-| New contract audit | **TBD**: about 5 contracts of roughly 100–250 lines, plus their Euler integration |
+| New contract audit | **TBD**: about 5 contracts of roughly 100–300 lines, plus their Euler integration |
 | Engineering | Zero-contract work plus the 5 contracts: **TBD** |
 | Launch delay | **TBD**, or none if the contracts are added after a zero-contract launch |
 | Running cost | Slightly more gas per borrow, deposit and price push |
