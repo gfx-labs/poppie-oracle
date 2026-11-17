@@ -91,7 +91,7 @@ contract HubGuard {
         if (address(evc_) == address(0) || address(sanctions_) == address(0) || owner_ == address(0)) {
             revert ZeroAddress();
         }
-        if (maxFeeBps_ > 10_000) revert InvalidConfig();
+        if (maxFeeBps_ > 10_000 || maxPauseDuration_ > type(uint32).max) revert InvalidConfig();
         evc = evc_;
         sanctions = sanctions_;
         MAX_FEE_BPS = maxFeeBps_;
@@ -227,6 +227,7 @@ contract HubGuard {
     /// @notice Pause borrows and flash loans; can only extend an existing pause.
     function pause(address hub, uint256 duration) external only(guardian) {
         if (duration > maxPauseDuration) revert InvalidConfig();
+        // forge-lint: disable-next-line(unsafe-typecast) duration <= type(uint32).max (constructor): fits uint40
         uint40 until = uint40(block.timestamp + duration);
         Cfg storage c = cfg[hub];
         if (until > c.pausedUntil) {

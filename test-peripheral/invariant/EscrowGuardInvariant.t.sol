@@ -2,6 +2,7 @@
 pragma solidity 0.8.24;
 
 import {Test} from "forge-std/Test.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {P2Base} from "../lib/P2Base.sol";
 import {MockVault, MockEVC, MockSanctions} from "../lib/Mocks.sol";
 import {EscrowGuard} from "../../src/peripheral/EscrowGuard.sol";
@@ -26,6 +27,7 @@ contract P2Handler is Test {
         escrows = [e1, e2];
         groups = [G, H];
         for (uint256 i; i < 4; ++i) {
+            // forge-lint: disable-next-line(unsafe-typecast) small constant address
             users[i] = address(uint160(0x2000 + i));
             vm.startPrank(users[i]);
             e1.deposit(1e18, users[i]);
@@ -38,7 +40,7 @@ contract P2Handler is Test {
         uint256 s = block.timestamp + bound(startOff, 0, 2 days);
         uint256 e = s + bound(len, 1, 6 hours);
         vm.prank(g.scheduler());
-        try g.addWindow(groups[grp % 2], uint40(s), uint40(e)) {
+        try g.addWindow(groups[grp % 2], SafeCast.toUint40(s), SafeCast.toUint40(e)) {
             days_.push(s / 1 days);
         } catch {}
     }
@@ -173,8 +175,8 @@ contract EscrowGuardInvariantTest is P2Base {
         address liq = makeAddr("liq");
         evc.setControlCollateral(true);
         vm.startPrank(user);
-        e1.transfer(liq, 10);
-        e1.transferFrom(user, liq, 10);
+        assertTrue(e1.transfer(liq, 10));
+        assertTrue(e1.transferFrom(user, liq, 10));
         e1.transferFromMax(user, liq);
         vm.stopPrank();
         assertEq(e1.balanceOf(liq), 100);

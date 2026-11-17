@@ -78,7 +78,7 @@ contract OracleAdminGuard {
     function submit(address target, bytes calldata data) external only(safe) {
         bytes32 id = keccak256(abi.encode(target, data));
         if (target == address(oracle)) {
-            bytes4 sel = bytes4(data);
+            bytes4 sel = _sel(data);
             if (sel == IPoppieEulerOracle.acceptAdmin.selector) revert UseAcceptOracleAdmin();
             if (sel == IPoppieEulerOracle.pauseAssets.selector) {
                 _pause(abi.decode(data[4:], (address[])));
@@ -117,7 +117,7 @@ contract OracleAdminGuard {
         uint256 e = eta[id];
         if (e == 0) revert NotQueued(id);
         if (block.timestamp > e + delay) revert Expired(id);
-        if (target != address(oracle) || bytes4(data) != IPoppieEulerOracle.adminSetPrice.selector) revert NotApprovable();
+        if (target != address(oracle) || _sel(data) != IPoppieEulerOracle.adminSetPrice.selector) revert NotApprovable();
         emit Approved(id);
         _executeQueued(id, target, data);
     }
@@ -177,10 +177,10 @@ contract OracleAdminGuard {
     function _queue(bytes32 id, address target, bytes calldata data) internal {
         uint256 e = eta[id];
         if (e != 0 && block.timestamp <= e + delay) revert AlreadyQueued(id);
-        bool isTransfer = target == address(oracle) && bytes4(data) == IPoppieEulerOracle.transferAdmin.selector;
+        bool isTransfer = target == address(oracle) && _sel(data) == IPoppieEulerOracle.transferAdmin.selector;
         e = block.timestamp + (isTransfer ? longDelay : delay);
         eta[id] = e;
-        guardianOnlyCancel[id] = target == address(this) && bytes4(data) == this.setSecondSafe.selector;
+        guardianOnlyCancel[id] = target == address(this) && _sel(data) == this.setSecondSafe.selector;
         emit Queued(id, target, data, e);
     }
 
@@ -188,7 +188,7 @@ contract OracleAdminGuard {
         delete eta[id];
         delete guardianOnlyCancel[id];
         _call(target, data);
-        if (target == address(oracle) && bytes4(data) == IPoppieEulerOracle.adminSetPrice.selector) {
+        if (target == address(oracle) && _sel(data) == IPoppieEulerOracle.adminSetPrice.selector) {
             (address a, uint128 p) = abi.decode(data[4:], (address, uint128));
             delete prePausePrice[a];
             ref[a] = Ref(p, uint40(block.timestamp));
@@ -217,11 +217,11 @@ contract OracleAdminGuard {
         }
         Ref memory r = ref[a];
         bool fresh = r.start == 0 || block.timestamp >= uint256(r.start) + delay;
-        uint256 rp = fresh ? (c.lastPrice != 0 ? c.lastPrice : prePausePrice[a]) : r.price;
+        uint128 rp = fresh ? (c.lastPrice != 0 ? c.lastPrice : prePausePrice[a]) : r.price;
         if (rp == 0) return false;
         uint256 diff = p > rp ? p - rp : rp - p;
         if (diff * 10_000 > bandBps * rp) return false;
-        if (fresh) ref[a] = Ref(uint128(rp), uint40(block.timestamp));
+        if (fresh) ref[a] = Ref(rp, uint40(block.timestamp));
         return true;
     }
 
@@ -252,6 +252,11 @@ contract OracleAdminGuard {
             return k != address(0) && k == backupKeeper;
         }
         return false;
+    }
+
+    /// @dev Function selector of `data`; zero if shorter than 4 bytes.
+    function _sel(bytes calldata data) internal pure returns (bytes4) {
+        return data.length < 4 ? bytes4(0) : bytes4(data[:4]);
     }
 
     function _call(address target, bytes calldata data) internal {

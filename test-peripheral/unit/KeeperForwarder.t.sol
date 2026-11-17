@@ -23,6 +23,7 @@ abstract contract P4Base is Test {
         oracle.setKeeper(address(f));
         uint16[] memory cb = new uint16[](5);
         for (uint256 i; i < 5; ++i) {
+            // forge-lint: disable-next-line(unsafe-typecast) small constant address
             assets.push(address(uint160(0xA000 + i)));
             cb[i] = 1000;
         }
@@ -143,6 +144,7 @@ contract KeeperForwarderFuzzTest is P4Base {
         address[] memory pool = new address[](48);
         uint16[] memory cb = new uint16[](48);
         for (uint256 i; i < 48; ++i) {
+            // forge-lint: disable-next-line(unsafe-typecast) small constant address
             pool[i] = address(uint160(0xB000 + i));
             cb[i] = 1000;
         }

@@ -2,6 +2,7 @@
 pragma solidity 0.8.24;
 
 import {Test} from "forge-std/Test.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {MockVault, MockEVC, MockSanctions} from "./Mocks.sol";
 import {EscrowGuard} from "../../src/peripheral/EscrowGuard.sol";
 import {IEVCSubset} from "../../src/peripheral/interfaces/IEVCSubset.sol";
@@ -57,9 +58,13 @@ abstract contract P2Base is Test {
         vm.stopPrank();
     }
 
+    function _u40(uint256 x) internal pure returns (uint40) {
+        return SafeCast.toUint40(x);
+    }
+
     function _addWindow(address grp, uint256 start, uint256 end) internal {
         vm.prank(scheduler);
-        g.addWindow(grp, uint40(start), uint40(end));
+        g.addWindow(grp, _u40(start), _u40(end));
     }
 
     function _arr(address a) internal pure returns (address[] memory r) {

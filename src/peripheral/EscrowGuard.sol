@@ -73,7 +73,9 @@ contract EscrowGuard {
         if (address(evc_) == address(0) || address(sanctions_) == address(0) || owner_ == address(0)) {
             revert ZeroAddress();
         }
-        if (maxWindowLen_ == 0 || maxWindowLen_ > 1 days || maxPerDay_ == 0) revert InvalidConfig();
+        if (maxWindowLen_ == 0 || maxWindowLen_ > 1 days || maxPerDay_ == 0 || maxPauseDuration_ > type(uint32).max) {
+            revert InvalidConfig();
+        }
         evc = evc_;
         sanctions = sanctions_;
         maxWindowLen = maxWindowLen_;
@@ -179,6 +181,7 @@ contract EscrowGuard {
 
     function pauseDeposits(address escrow, uint256 duration) external only(guardian) {
         if (duration > maxPauseDuration) revert InvalidConfig();
+        // forge-lint: disable-next-line(unsafe-typecast) duration <= type(uint32).max (constructor): fits uint40
         uint40 until = uint40(block.timestamp + duration);
         if (until > pausedUntil[escrow]) {
             pausedUntil[escrow] = until;

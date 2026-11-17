@@ -27,12 +27,14 @@ contract EscrowGuardFreezeTest is P2Base {
         vm.expectRevert(_frozenErr(user));
         e1.redeem(1, user, user);
         vm.expectRevert(_frozenErr(user));
+        // forge-lint: disable-next-line(erc20-unchecked-transfer) expected to revert
         e1.transfer(friend, 1);
         vm.expectRevert(_frozenErr(user));
         e1.transferFromMax(user, friend);
         vm.stopPrank();
         vm.prank(friend); // approved spender pulling from a frozen account
         vm.expectRevert(_frozenErr(user));
+        // forge-lint: disable-next-line(erc20-unchecked-transfer) expected to revert
         e1.transferFrom(user, friend, 1);
     }
 
@@ -46,14 +48,15 @@ contract EscrowGuardFreezeTest is P2Base {
         e1.withdraw(1, sub, sub);
         vm.prank(sub);
         vm.expectRevert(_frozenErr(user));
+        // forge-lint: disable-next-line(erc20-unchecked-transfer) expected to revert
         e1.transfer(friend, 1);
     }
 
     function test_seizure_passesWhileFrozen() public {
         evc.setControlCollateral(true);
         vm.startPrank(user);
-        e1.transfer(liq, 10);
-        e1.transferFrom(user, liq, 10);
+        assertTrue(e1.transfer(liq, 10));
+        assertTrue(e1.transferFrom(user, liq, 10));
         e1.transferFromMax(user, liq);
         vm.stopPrank();
         assertEq(e1.balanceOf(liq), 100);
@@ -62,7 +65,7 @@ contract EscrowGuardFreezeTest is P2Base {
     function test_others_unaffected() public {
         vm.startPrank(friend);
         e1.deposit(10, friend);
-        e1.transfer(user, 5); // receiving is allowed
+        assertTrue(e1.transfer(user, 5)); // receiving is allowed
         e1.withdraw(1, friend, friend);
         vm.stopPrank();
     }
@@ -88,7 +91,7 @@ contract EscrowGuardFreezeTest is P2Base {
     function test_transferNotHooked_freezeOnlyCoversExits() public {
         e1.setHookConfig(address(g), ESCROW_OPS);
         vm.prank(user);
-        e1.transfer(friend, 1);
+        assertTrue(e1.transfer(friend, 1));
         vm.prank(user);
         vm.expectRevert(_frozenErr(user));
         e1.withdraw(1, user, user);

@@ -60,14 +60,14 @@ contract EscrowGuardUnitTest is P2Base {
         uint256 s = DAY0 + 12 hours;
         vm.startPrank(scheduler);
         vm.expectRevert(EscrowGuard.InvalidWindow.selector);
-        g.addWindow(G, uint40(block.timestamp - 1), uint40(block.timestamp + 1)); // in the past
+        g.addWindow(G, _u40(block.timestamp - 1), _u40(block.timestamp + 1)); // in the past
         vm.expectRevert(EscrowGuard.InvalidWindow.selector);
-        g.addWindow(G, uint40(s), uint40(s)); // empty
+        g.addWindow(G, _u40(s), _u40(s)); // empty
         vm.expectRevert(EscrowGuard.InvalidWindow.selector);
-        g.addWindow(G, uint40(s), uint40(s + MAX_LEN + 1)); // too long
-        g.addWindow(G, uint40(s), uint40(s + MAX_LEN)); // exactly max
+        g.addWindow(G, _u40(s), _u40(s + MAX_LEN + 1)); // too long
+        g.addWindow(G, _u40(s), _u40(s + MAX_LEN)); // exactly max
         vm.expectRevert(EscrowGuard.InvalidWindow.selector);
-        g.addWindow(address(0), uint40(s), uint40(s + 1));
+        g.addWindow(address(0), _u40(s), _u40(s + 1));
         vm.stopPrank();
     }
 
@@ -80,9 +80,9 @@ contract EscrowGuardUnitTest is P2Base {
         uint256 midnight = DAY0 + 1 days;
         vm.startPrank(scheduler);
         vm.expectRevert(EscrowGuard.InvalidWindow.selector);
-        g.addWindow(G, uint40(midnight - 1 hours), uint40(midnight + 1)); // crosses
-        g.addWindow(G, uint40(midnight - 1 hours), uint40(midnight)); // ends exactly at midnight
-        g.addWindow(G, uint40(midnight), uint40(midnight + 1 hours)); // starts at midnight: next day
+        g.addWindow(G, _u40(midnight - 1 hours), _u40(midnight + 1)); // crosses
+        g.addWindow(G, _u40(midnight - 1 hours), _u40(midnight)); // ends exactly at midnight
+        g.addWindow(G, _u40(midnight), _u40(midnight + 1 hours)); // starts at midnight: next day
         vm.stopPrank();
         assertEq(g.windowsOf(G, DAY0 / 1 days).length, 1);
         assertEq(g.windowsOf(G, DAY0 / 1 days + 1).length, 1);
@@ -99,14 +99,14 @@ contract EscrowGuardUnitTest is P2Base {
         for (uint256 i; i < MAX_PER_DAY; ++i) _addWindow(G, s + i * 1 hours, s + i * 1 hours + 10 minutes);
         vm.prank(scheduler);
         vm.expectRevert(EscrowGuard.TooManyWindows.selector);
-        g.addWindow(G, uint40(s + 5 hours), uint40(s + 6 hours));
+        g.addWindow(G, _u40(s + 5 hours), _u40(s + 6 hours));
         _addWindow(H, s, s + 1 hours); // other group has its own budget
         _addWindow(G, s + 1 days, s + 1 days + 1 hours); // next day has its own budget
     }
 
     function test_addWindow_onlyScheduler() public {
         vm.expectRevert(EscrowGuard.Unauthorized.selector);
-        g.addWindow(G, uint40(block.timestamp + 1), uint40(block.timestamp + 2));
+        g.addWindow(G, _u40(block.timestamp + 1), _u40(block.timestamp + 2));
     }
 
     function test_clearWindows_ownerOnly() public {

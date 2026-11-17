@@ -63,8 +63,9 @@ contract KeeperForwarder {
         }
         uint256 u = uint256(used) + assets.length;
         if (u > n) revert BudgetExceeded();
+        // forge-lint: disable-next-line(unsafe-typecast) u <= n, a uint32
         used = uint32(u);
-        emit BudgetUsed(uint32(u), n);
+        emit BudgetUsed(used, n);
         oracle.pauseAssets(assets);
     }
 

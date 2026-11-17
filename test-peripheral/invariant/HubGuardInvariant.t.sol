@@ -29,6 +29,7 @@ contract P1Handler is Test {
         (hub, g, sanc, feeRcv, limit, window, feeBps) = (hub_, g_, s_, feeRcv_, limit_, window_, fee_);
         guardian = g.guardian();
         denylister = g.denylister();
+        // forge-lint: disable-next-line(unsafe-typecast) small constant address
         for (uint256 i; i < 4; ++i) users[i] = address(uint160(0x1000 + i));
     }
 

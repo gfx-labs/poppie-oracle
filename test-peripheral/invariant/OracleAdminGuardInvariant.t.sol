@@ -2,6 +2,7 @@
 pragma solidity 0.8.24;
 
 import {Test} from "forge-std/Test.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {P3Base} from "../lib/P3Base.sol";
 import {PoppieEulerOracle} from "../../src/PoppieEulerOracle.sol";
 import {IPoppieEulerOracle} from "../../src/interfaces/IPoppieEulerOracle.sol";
@@ -73,7 +74,7 @@ contract P3Handler is Test {
         if (kind == 0) return abi.encodeCall(IPoppieEulerOracle.adminSetPrice, (a, uint128(bound(v, 1, 300e18))));
         if (kind == 1) {
             return abi.encodeCall(
-                IPoppieEulerOracle.setAssetThresholds, (a, uint16(v % 3000), uint16(1 + (v >> 8) % 3000))
+                IPoppieEulerOracle.setAssetThresholds, (a, SafeCast.toUint16(v % 3000), SafeCast.toUint16(1 + (v >> 8) % 3000))
             );
         }
         if (kind == 2) return abi.encodeCall(IPoppieEulerOracle.setMaxPriceAge, ((v % 4) * 1 days));
@@ -110,6 +111,7 @@ contract P3Handler is Test {
         vm.prank(safe);
         try g.execute(address(oracle), d) {
             calls++;
+            // forge-lint: disable-next-line(unsafe-typecast) d is abi-encoded calldata: takes its selector
             bool isTransfer = bytes4(d) == IPoppieEulerOracle.transferAdmin.selector;
             uint256 minWait = isTransfer ? g.longDelay() : g.delay();
             if (e == 0 || block.timestamp < queuedTs[id] + minWait) violations++;
@@ -123,6 +125,7 @@ contract P3Handler is Test {
         vm.prank(second);
         try g.approveQueued(address(oracle), d) {
             calls++;
+            // forge-lint: disable-next-line(unsafe-typecast) d is abi-encoded calldata: takes its selector
             if (bytes4(d) != IPoppieEulerOracle.adminSetPrice.selector || _loosened(before, _snap())) violations++;
         } catch {}
     }
