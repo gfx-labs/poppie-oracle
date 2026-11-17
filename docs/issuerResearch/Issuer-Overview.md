@@ -22,7 +22,7 @@
 - **xStocks:** Backed questions 9–23 (`docs/issuerResearch/xStocks-Backed-Questions.md`), especially what wrapper holders get in a merger (KVUEx) and the HONx halving; confirm third parties can liquidate through Enso at our cap sizes (`docs/issuerResearch/Enso-Questions.md`, D9); per-session cap sizing.
 - **Robinhood:** Arbitrum deployment model and cross-chain sync; burn-role controls; the SOXX change (`docs/issuerResearch/Robinhood-Questions.md`).
 - **Dinari:** who holds `recover`, and whether it can be removed or timelocked.
-- **Ondo:** whether it will deploy on Arbitrum. The BSC keeper's handling of Ondo multiplier errors is open (`docs/Poppie-Team-Questions.md`).
+- **Ondo:** whether it will deploy on Arbitrum. The BSC keeper's handling of Ondo multiplier errors is open (`Dinari-Ondo.md`, ON-2, ON-3 and questions for the Poppie team).
 - **Reality:** no contact with Reality or Merkl yet; dividends for Poppie depositors are withheld until Merkl supports Poppie's escrows; questions ready (`docs/issuerResearch/Reality-Questions.md`): verified source and a beacon timelock, the rCRWD and rHON errors and the overdue splits, merger handling, how long dividends are withheld for unsupported protocols, who holds supply and whether a third party can redeem, and whether lending use is permitted.
 
 ## Reality dividends in an escrow

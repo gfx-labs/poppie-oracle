@@ -792,7 +792,7 @@ As of 2026-11-16. Each must be closed, or explicitly accepted, before listing.
 16. **Deployment tooling:** Arbitrum deployment and configure scripts using a keystore or KMS signer (A8, A12); MultiSend batch generation for per-asset admin setters at 500 assets; a separate build profile for any new contract, and a bytecode check that the oracle and adapter match the `v1-bsc` build.
 17. **Keeper redundancy:** shared-key keeper processes with nonce coordination, and a `setKeeper` failover runbook (KEEP-1), unless D14 adds a keeper Safe.
 18. **Disclosures:** depositors forgo cash dividends while deposited; LTV buffers must exceed the largest expected dividend, including specials. Legal and tax review.
-19. **BSC checks:** confirm in BSC production logs whether the Alpha Vantage cross-check has ever compared a price (KEEP-3), and fix the BSC keeper's retry after a reverted batch, which does not run for guard reverts (KEEP-22).
+19. **BSC checks** (questions in `docs/issuerResearch/Dinari-Ondo.md`, ON-2, ON-3): confirm in BSC production logs whether the Alpha Vantage cross-check has ever compared a price (KEEP-3), and fix the BSC keeper's retry after a reverted batch, which does not run for guard reverts (KEEP-22).
 20. **Issuer pause schedules:** a schedule input for the keeper, so pauses inside a published window only log, before listing an issuer whose scheduled pauses last longer than one push interval.
 
 ## Expectations for integrators

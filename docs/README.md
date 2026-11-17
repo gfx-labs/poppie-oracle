@@ -9,8 +9,7 @@ Poppie v2 on Arbitrum has two candidate designs: **zero-contract** (no new Poppi
 | `zeroContracts/Design.md` | **Baseline design**, with everything both designs share: hubs, issuers, risk register and metrics, liquidity policy, prices and corporate actions, governance, monitoring, decisions, blockers, open gaps |
 | `peripheralContracts/Overview.md` | One-page summary of the peripheral-contract design |
 | `peripheralContracts/Design.md` | What the peripheral design changes, and the specifications of contracts P1–P5 |
-| `Poppie-Team-Questions.md` | Questions for the Poppie team about the BSC keeper and market |
-| `issuerResearch/` | Per-issuer research and findings (`xStocks.md`, `Robinhood.md`, `Reality.md`, `Dinari-Ondo.md`), a one-page issuer comparison, questions for issuers and Enso, and the HONx incident |
+| `issuerResearch/` | Per-issuer research and findings (`xStocks.md`, `Robinhood.md`, `Reality.md`, `Dinari-Ondo.md`, which also holds the BSC findings and questions for the Poppie team), a one-page issuer comparison, questions for issuers and Enso, and the HONx incident |
 | `evaluation/` | Evidence from testing: `Contracts.md` (v1 oracle and adapter, stock Euler, tests and how to run them) and `Keeper.md` (keeper prototype) |
 | `legacy/` | Superseded material: the original evaluation brief, the BSC threat model and the earlier rebuild plan |
 

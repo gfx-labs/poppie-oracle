@@ -1,6 +1,6 @@
 # Dinari and Ondo on Arbitrum
 
-*Read on-chain 2026-11-02. Design docs cite these findings by ID (DN-1 to DN-5, ON-1). Verdict: Dinari blocked as is (`recover`); Ondo not deployed on Arbitrum.*
+*Read on-chain 2026-11-02. Design docs cite these findings by ID (DN-1 to DN-5, ON-1 to ON-3). Verdict: Dinari blocked as is (`recover`); Ondo not deployed on Arbitrum.*
 
 ## Dinari
 
@@ -41,3 +41,18 @@ Ondo GM has static balances and reinvested dividends, so it would fit with no wr
 | DN-4 | Issue | Upgrade beacons for all dShares (`0x1543…dacb`) and all wrappers (`0xad20…f7c5`), and the transfer restrictor, are owned by EOA `0x06B0…60a3`. The deployed dShare and wrapper don't expose `owner`, `defaultAdmin` or `hasRole`, so the admin of `recover` and `setBalancePerShare` wasn't confirmed | `cast call` |
 | DN-5 | Issue | Holdings are concentrated: three EOAs hold ~90% of NVDA, ~98% of MSTR. No Uniswap v3 USDC pool for NVDA | `cast logs`, `cast call` |
 | ON-1 | Confirmed | Ondo GM's BSC token addresses (`NVDAon`, `TSLAon`) have no code on Arbitrum, consistent with Ondo's docs | `cast codesize` |
+| ON-2 | **Issue (BSC)** | **A Backed-style halving (−50%) of an Ondo multiplier would likely stay live on BSC.** Prod oracle `0xAE83…5f26D`, keeper `0xEA2b…1c00A`, 54 batches 2026-11-03 to 11-04: 36 assets pushed every 30 min (NFLX only 14:45–20:45 UTC). Prices are total-return (equity × Ondo multiplier). `maxPriceAge` 3600 s, `anchorWindow` 86400 s. Breaker and cap per asset: 3000 bps for 8 ETF and commodity assets, 5000 for 21, 7500 for 7. A −50% error passes 5000 bps when equity is flat or up, and 7500 outright; the correct reset (about +95%) passes no threshold, so the wrong price stays until it goes stale or the admin calls `adminSetPrice`. The keeper has no multiplier check (KEEP-3 covers the alert-only Alpha Vantage check); a failing asset is retried every 30 min against the same stored price | On-chain reads; BSC keeper source; `Design.md` \"Keeper\" |
+| ON-3 | Info | **Ondo pause window and keeper pausing.** Ondo pauses each weekday 00:52–01:12 UTC for the daily multiplier update. The BSC keeper pauses on-chain (`pauseAssets`, wiping the price) any asset with an active `ASSET_PAUSED`, and the admin must re-seed it. Pushes at :15/:45 miss the window; a July batch re-seeded 32 paused assets (cause unconfirmed). 16 pushed assets were added after `script/ConfigureProd.s.sol` (36 pushed; 37 with STRC, configured but not pushed), so no config script matches production | Ondo status API; BSC keeper source |
+
+## Open questions for the Poppie team (BSC)
+
+1. **Alerts:** has the monitor's \"next price would be rejected\" error fired on a real gap or error?
+2. **Alpha Vantage:** which plan; does any comparison or deviation error appear in logs (KEEP-3); how often has the 15% alert fired and was any real; do all 37 assets resolve (SPCX, STRC, ETFs); will the check become blocking?
+3. **July re-seed:** was it caused by a push inside the Ondo pause window?
+4. **Incident response:** who holds the oracle admin (`0xd2e0…4E6d`): which Safe, how many signers, how fast can it `pauseAssets` or `adminSetPrice`, is a recovery batch ready?
+5. **Breaker sizing:** why 50% by default? Would 20–30% (perhaps overnight only) be considered?
+6. **Exposure:** liquidation LTVs per asset, share of debt above half the liquidation LTV, who liquidates and how fast.
+7. **Ondo history:** has a multiplier ever moved unexpectedly, and did the keeper push it? Ondo's `/v1/assets/{symbol}/shares-multiplier` needs a key; can they run it or share access?
+8. **Config:** confirm the 16 later assets (AMC, ASML, BMNR, CRWV, EWY, HOOD, IAU, IONQ, NBIS, OKLO, PLTR, SLV, SPCX, STRC, TLT, USO) and their thresholds; why STRC has no pushes; is there a production config script?
+9. **Tests:** is there an end-to-end test that passes (KEEP-2)? **Retry:** has a run failed because the retry skipped a guard revert (KEEP-22)?
+10. **Chainlink:** which Data Streams plan, can it cover xStocks on Arbitrum (71 names, KEEP-4), is there a contact for 100–500 feeds?

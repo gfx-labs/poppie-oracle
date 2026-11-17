@@ -20,7 +20,7 @@ Dev deployment parameters:
 - `maxPriceAge`: 3600s (1 hour)
 - `anchorWindow`: 86400s (24 hours)
 - `unitOfAccount`: `address(840)` (USD), 18 decimals
-- 25 Ondo GM tokens configured (the dev set; production now pushes 36, see `docs/Poppie-Team-Questions.md`)
+- 25 Ondo GM tokens configured (the dev set; production now pushes 36, see `docs/issuerResearch/Dinari-Ondo.md`, ON-2)
 - Admin: `0xDDeFb8145fA286195f091E3D7749e22B53Bb28bF`
 - Keeper: `0x9e77D62f664cb1ebe40C0629841e69Dbf7f646e1` (GCP KMS)
 
