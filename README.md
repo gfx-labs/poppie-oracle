@@ -149,6 +149,8 @@ forge test
 | `PoppieEulerAdapter.symbolic.t.sol` | Symbolic/Halmos: quote math equivalence proofs |
 | `PoppieEuler.review.t.sol` | Review-oriented property tests |
 
+Peripheral contract tests (`src/peripheral/`, v2 work) run with `FOUNDRY_PROFILE=peripheral forge test`. The fork tests pin an Arbitrum block (`test-peripheral/lib/ForkUtil.sol`) and need an archive node; the public RPC prunes old state, so they skip there. Use e.g. `export ARB_RPC=https://arb-mainnet.g.alchemy.com/v2/$ALCHEMY_API_KEY`.
+
 ## Deploy scripts
 
 ```bash
