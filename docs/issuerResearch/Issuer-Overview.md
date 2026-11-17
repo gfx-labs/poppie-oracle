@@ -1,6 +1,6 @@
 # Issuers on Arbitrum at a glance
 
-*Nov 5, 2026 (UTC). Poppie will not onboard directly with any issuer and runs no liquidator at launch; third parties liquidate through providers the issuer already allows, and caps limit exposure to the exit that exists (D9). Details and evidence: `docs/EVAL_FINDINGS.md` (finding IDs in brackets) and the issuer sections of `docs/Overview.md` (issuers, liquidity and corporate actions, shared by both designs).*
+*Nov 5, 2026 (UTC). Poppie will not onboard directly with any issuer and runs no liquidator at launch; third parties liquidate through providers the issuer already allows, and caps limit exposure to the exit that exists (D9). Details and evidence (finding IDs in brackets): `xStocks.md`, `Robinhood.md`, `Reality.md` and `Dinari-Ondo.md` in this folder. Liquidity policy and corporate actions: `docs/zeroContracts/Design.md`.*
 
 | | xStocks (Backed) | Robinhood Stock Tokens | Dinari | Ondo GM | Reality |
 | --- | --- | --- | --- | --- | --- |

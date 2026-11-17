@@ -1,129 +1,66 @@
-# Poppie v2 on Arbitrum: Overview (zero-contract design)
+# Zero-contract design: Overview
 
-*Nov 16, 2026. Full detail: `docs/Overview.md` (shared plan) and `docs/zeroContracts/Poppie-Arbitrum-Hub-Architecture-Governance-Plan.md` (this design). The alternative with small Poppie contracts: `docs/peripheralContracts/Overview.md`; comparison: `docs/Design-Comparison.md`.*
+*Nov 16, 2026. Comparison with the alternative: `docs/Overview.md`. Full detail: `docs/zeroContracts/Design.md`.*
 
 ## What it is
 
-USDC lending on Euler V2 (Arbitrum) against tokenized US stocks and ETFs from several issuers. About 100 names at launch, growing toward 500.
+USDC lending on Euler V2 (Arbitrum) against tokenized US stocks and ETFs. **Poppie writes no new contracts.** It redeploys its audited BSC price oracle unchanged and uses standard Euler and Safe contracts. Lenders deposit into two pooled vaults (Prime and Yield), which lend through four hubs: one for blue chips, and three for riskier names by risk band.
 
-## Structure
+## How risk is controlled
 
-- **No new contracts.** The BSC oracle and adapter are redeployed unchanged (already audited). Everything else is standard Euler (EVK vaults, router, Earn, and optionally Euler's emergency governor and cap steward) plus Safe multisigs.
-- **Hubs (USDC pools):**
-  - **Prime:** blue chips only.
-  - **Three risk bands (M1–M3):** each holds all blue chips plus its band's long-tail names.
-- **Lenders** deposit into two Earn vaults (Prime, Yield), which allocate across the hubs.
-- **Borrowers** post stock tokens into one escrow per asset and borrow USDC from a hub.
-- **Limits:**
-
-  | | Max borrow / liquidation LTV | Max liquidation discount |
-  | --- | --- | --- |
-  | Prime | 70% / 75% | 8% |
-  | M1 | 50% / 58% | 10% |
-  | M2 | 45% / 52% | 15% |
-  | M3 | 35% / 42% | 20% |
-
-- **Revenue:** an interest fee (10–25%) and a rate floor per hub, plus Earn fees. Part funds a loss reserve.
-
-## Control
-
-| Who | Controls | Bounded by |
+| Who | Can do | Limited by |
 | --- | --- | --- |
-| Keeper key | Price pushes, asset pauses | The oracle's per-push and per-window limits |
-| Emergency key | Lower caps, lower borrow LTVs, disable a vault | Euler's emergency governor: tighten only |
-| Cap steward key | Routine cap changes | Euler's cap steward: a bounded factor per interval |
-| Oracle Safe | Prices and oracle settings | Nothing, unless every admin action is put behind a timelock |
-| Ops Safe | Hubs, LTVs, caps, listings, routes | Its signers; optionally a timelock of at least a day on loosening changes |
-| Reserve Safe | Repays bad debt | Its signers |
+| Price keeper (automated) | Push prices; pause a name's price | The oracle's per-update and per-day move limits |
+| Emergency key (on call) | Lower caps and LTVs, or freeze a vault, in seconds | Euler: can only tighten |
+| Cap steward key (automated) | Routine cap changes | Euler: a bounded step per interval |
+| Oracle multisig | Any price or oracle setting | **Nothing**, unless every action is put behind a delay |
+| Ops multisig | Hubs, LTVs, caps, listings | Its signers; optionally a 1-day delay on loosening |
 
-## Risk management
+**What bounds a loss** is set in advance: supply caps per name and per issuer sized to exit liquidity; borrow caps kept just above current borrowing and raised daily; LTV buffers sized for weekend gaps; blocking price checks; and a loss reserve. Repay and liquidation always stay open.
 
-**What bounds a loss** is what is set in advance, because an attack can borrow in minutes and a Safe takes longer to sign:
+## Pros
 
-- supply caps per name and per issuer, sized to exit depth;
-- borrow caps kept a set headroom above current borrows and raised daily within bounds, so a fast attack can borrow at most that headroom;
-- LTV buffers and liquidation discounts sized for weekend gaps;
-- the keeper's blocking price and multiplier checks;
-- a loss reserve.
+- No new code to audit; launches sooner.
+- No Poppie code in the borrowing path, so a Poppie bug can't block users.
+- Integrators call Euler directly.
+- Fewer keys and settings to secure.
+- Any peripheral contract can be added later without touching the core.
 
-**How we restrict capital fast:** an emergency key can freeze caps or lower borrow LTVs in seconds. Repay and liquidation always stay open. The keeper can stop pricing a name, at the cost of wiping its price.
+## Cons
 
-**What we can't do without contracts:**
+- **A compromised oracle multisig can set any price instantly**, unless every fix is delayed. This is the largest unbounded risk.
+- A stolen price keeper key can wipe every price.
+- Borrowing bursts are limited only by keeping caps tight, which means daily cap raises and "cap reached" errors on busy days.
+- Sanctions screening, the origination fee and issuer maintenance windows are enforced only in Poppie's app; direct callers bypass them.
+- No way to freeze, seize or return one account's funds.
 
-- freeze, seize or return one account's funds;
-- limit borrowing per hour except by keeping caps tight;
-- bound a compromised Oracle Safe without delaying every price fix;
-- stop a stolen keeper key from wiping every price;
-- list instantly while delaying route overwrites;
-- block sanctioned addresses that call the contracts directly (the issuer tokens and USDC block their own listed addresses);
-- enforce the origination fee (the SDK charges it) or issuer pause windows (the app blocks them).
+## Costs
 
-**What not writing contracts saves:** no new audit; no Poppie code in the borrow path that could block borrowing; integrators call Euler directly; less gas; fewer keys; a faster launch. Any peripheral contract can be added later without touching the core.
-
-## Prices
-
-- **Source:** a keeper, extended from the one running on BSC, pushes one price per asset every 30 minutes. That price is used for both borrowing and liquidation.
-- **Calculation:** Chainlink Data Streams stock price × the issuer's multiplier, read on-chain.
-- **Blocking checks before every push:**
-  - the stock price must agree with an independent second source;
-  - the multiplier must match the issuer's published value and a real corporate action.
-
-  On a failure the name is skipped and an alert fires. This catches errors like the HONx multiplier halving.
-- **Status:** a prototype of this keeper passes split, rogue-multiplier, pause, outage and scale tests on an Arbitrum fork against the real xStocks contracts.
-- **Coverage limit:** Chainlink Data Streams covers 71 xStocks names on Arbitrum, below the ~100 planned for launch. Whether phase 1 waits for more coverage or launches with fewer names is still to decide.
-- **Oracle limits:** each push and the drift per window are bounded; anything larger needs the Oracle Safe.
-- **Closed markets:** with no good price, the price goes stale after one hour. Borrowing, withdrawals and liquidations then stop for accounts holding that name.
-
-## Issuers
-
-| Issuer | Status |
+| Item | Estimate |
 | --- | --- |
-| xStocks (Backed) | Contracts fit. Exit is Backed's own inventory only, with nothing at weekends. **Main launch candidate** |
-| Robinhood | Contracts fit. Not on Arbitrum yet |
-| Reality | Contracts fit. Supply concentrated, small pools, unverified code. **Not now** |
-| Dinari | The issuer can pull wrapper backing. **Blocked** |
-| Ondo | Not on Arbitrum |
+| New contract audit | None |
+| Engineering | Deployment scripts, keeper extension (prototyped), monitoring: **TBD** |
+| Running cost | Keeper about 0.00009 ETH per run (71 names) |
+| Operations | Daily cap raises; an on-call rota for oracle fixes |
 
-We only take issuers whose dividends are reinvested, and we will not onboard directly with any issuer (legal).
+## Main risks
 
-## Main risk: thin liquidity and liquidations
-
-- **The problem:** on Arbitrum, exit liquidity for these tokens is mostly the issuer's own inventory: up to $1M per trade on major xStocks names in market hours, around $10k on long-tail names overnight, and none at weekends. No one is committed to buy seized collateral, and Poppie runs no liquidator at launch.
-- **Who liquidates:** third parties. They can sell seized collateral atomically through Enso (Backed has allowlisted Enso; 0x routes through it) or more slowly through CoW solvers.
-- **How we limit exposure:**
-  - **List** only names with an exit route open to third parties.
-  - **Cap** each name's supply at 10–20% of its exit depth in the weakest session it's priced in.
-  - **Don't price** names in sessions where the exit is too thin; the price goes stale instead, which also pauses liquidations.
-  - **Set LTV buffers and discounts** to cover weekend gaps and the cost of holding seized stock.
-  - **Limit concentration** per hub, per issuer and per stock.
-  - **Absorb bad debt** from the loss reserve.
-  - **Alert** when positions stay liquidatable, when an exit route disappears, or when bad debt appears.
-- **Deferred:** a Poppie-run liquidator. Revisit if third parties don't act at launch sizes.
-
-## Other risks
-
-- **Issuer keys:**
-  - single keys at xStocks and Robinhood can change multipliers instantly;
-  - Robinhood keys can burn tokens from any holder.
-
-  Defended by the keeper's checks and per-issuer caps.
-- **Corporate actions:**
-  - splits and dividends run through the multiplier, automatically;
-  - mergers and delistings require winding the name down before the issuer's deadline.
-- **Ops Safe:** it holds all structural power with no notice period. It reviews every change decoded and simulated, but signing fatigue is a real risk.
+1. **Thin exit liquidity.** The only buyer for xStocks on Arbitrum is Backed's own inventory: up to $1M per trade on majors in market hours, about $10k on smaller names overnight, none at weekends. Third parties liquidate; Poppie runs no liquidator. Each name is capped at 10–20% of its exit depth.
+2. **Issuer keys** can change multipliers instantly (and at Robinhood, burn tokens). The keeper blocks unexplained changes; per-issuer caps limit the rest.
+3. **Ops multisig** holds all structural power with no notice period, and signs often, so fatigue is a risk.
 
 ## Open items
 
-1. An issuer with a usable Arbitrum market. xStocks is the only candidate today.
-2. Confirm third parties can liquidate xStocks through Enso at our cap sizes, and choose the second price-source vendors.
-3. Price coverage beyond 71 names: more Chainlink feeds or a second primary source.
-4. A corporate-action data feed (splits and dividends, net of withholding). The keeper's multiplier check depends on it: without it, every dividend stops that name's pricing until someone adds it by hand.
-5. Fork tests on Euler: stale-price behaviour, caps, and Earn accepting the hubs.
+1. An issuer with a usable Arbitrum market (xStocks is the only candidate).
+2. Confirm third parties can liquidate through Enso at our cap sizes.
+3. Price coverage beyond Chainlink's 71 names.
+4. A corporate-action data feed; without it, every dividend stops that name's pricing until added by hand.
+5. Set the risk appetite (loss limits, reserve size).
 
 ## Rollout
 
 | Phase | Scope | Gate |
 | --- | --- | --- |
 | 0 | Extended keeper; Euler and liquidation fork tests | Tests pass; issuer questions answered |
-| 1 | About 100 names: Prime plus 3 band hubs, 2 Earn vaults | Config check passes; alerts live |
+| 1 | About 100 names: 4 hubs, 2 lender vaults | Config check passes; alerts live |
 | 2 | Toward 500 names | — |

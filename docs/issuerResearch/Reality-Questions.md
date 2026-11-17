@@ -1,6 +1,6 @@
 # Questions for Reality (rTokens on Arbitrum)
 
-*Nov 5, 2026 (UTC; updated after the 11-05 splits and Tenderly traces). No contact yet; to send once there is one. Poppie is evaluating rTokens as collateral in Euler V2 lending markets on Arbitrum. Our escrow vault would hold the rToken itself, and we would price each token as equity price × `uiMultiplier()`. Reality's docs are geo-blocked from where we ran this. We read the Dividends & Claiming page through a VPN and take it at its word. Everything else comes from Bitget's public posts and on-chain data. The token contracts are unverified, so we read behaviour from events and simulated calls (findings RE-1 to RE-12 in `docs/EVAL_FINDINGS.md`).*
+*Nov 5, 2026 (UTC; updated after the 11-05 splits and Tenderly traces). No contact yet; to send once there is one. Poppie is evaluating rTokens as collateral in Euler V2 lending markets on Arbitrum. Our escrow vault would hold the rToken itself, and we would price each token as equity price × `uiMultiplier()`. Reality's docs are geo-blocked from where we ran this. We read the Dividends & Claiming page through a VPN and take it at its word. Everything else comes from Bitget's public posts and on-chain data. The token contracts are unverified, so we read behaviour from events and simulated calls (findings RE-1 to RE-12 in `docs/issuerResearch/Reality.md`).*
 
 **Status key:** **On-chain** means answered on-chain, and the question asks you to confirm. **Partial** means the on-chain data leaves a gap. **Unknown** means we found nothing.
 

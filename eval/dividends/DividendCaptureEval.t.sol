@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
 
-// DIV-1 in docs/EVAL_FINDINGS.md: the test-only DividendCaptureWrapper
+// DIV-1 in docs/evaluation/Contracts.md: the test-only DividendCaptureWrapper
 // prototype captures pushed and claim-based cash dividends as protocol
 // revenue, cannot leak the underlying, and prices unchanged through the v1
 // adapter and EulerRouter. FOUNDRY_PROFILE=eval forge test

@@ -6,7 +6,7 @@ pragma solidity 0.8.24;
 // ARBITRUM_RPC_URL is set, e.g.
 //   ARBITRUM_RPC_URL=https://arb1.arbitrum.io/rpc FOUNDRY_PROFILE=eval forge test --match-path 'eval/fork/*'
 //
-// Addresses and roles were read on-chain on 2026-11-02; see docs/EVAL_FINDINGS.md (XS-*).
+// Addresses and roles were read on-chain on 2026-11-02; see docs/issuerResearch/xStocks.md (XS-*).
 
 import {Test} from "forge-std/Test.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";

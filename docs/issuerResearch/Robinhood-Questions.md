@@ -1,6 +1,6 @@
 # Questions for Robinhood (Stock Tokens)
 
-*Nov 4, 2026. Poppie plans to accept Robinhood Stock Tokens as collateral in Euler V2 lending markets on Arbitrum once they are deployed there. Our escrow vault would hold the token itself, and we would price each token as equity price × `uiMultiplier()`. We have tested the AAPL token and its registry on a Robinhood Chain fork (findings RH-1 to RH-11 in `docs/EVAL_FINDINGS.md`).*
+*Nov 4, 2026. Poppie plans to accept Robinhood Stock Tokens as collateral in Euler V2 lending markets on Arbitrum once they are deployed there. Our escrow vault would hold the token itself, and we would price each token as equity price × `uiMultiplier()`. We have tested the AAPL token and its registry on a Robinhood Chain fork (findings RH-1 to RH-11 in `docs/issuerResearch/Robinhood.md`).*
 
 1. **Arbitrum deployment.** Will Stock Tokens on Arbitrum One be issued natively, or bridged from Robinhood Chain (the `/assets` deployments carry `transporterEnabled` and `replicatorEnabled`)? On every chain, will the multiplier, the pending multiplier, `oraclePaused()` and the blocklist change in the same block, or can they differ for a while? Will Arbitrum tokens use the same registry design and role holders?
 

@@ -77,7 +77,7 @@
 
 ### From on-chain history (Nov 4)
 
-*We went through Backed's token factory and multiplier history on Ethereum and Arbitrum. EAx and the other tokens no longer in the API stay live, unburned and held by Backed. No wrapper has held a token through a merger or delisting. Findings XS-11 to XS-14 in `docs/EVAL_FINDINGS.md`.*
+*We went through Backed's token factory and multiplier history on Ethereum and Arbitrum. EAx and the other tokens no longer in the API stay live, unburned and held by Backed. No wrapper has held a token through a merger or delisting. Findings XS-11 to XS-14 in `docs/issuerResearch/xStocks.md`.*
 
 14. **Spin-offs.** After Versant's spin-off from Comcast, CMCSAx's multiplier rose 4.72% on 2026-01-07, and VSNTx was only listed in September. Did you sell the Versant shares and reinvest in CMCSA through the multiplier? Is that the standard treatment for every spin-off? For Solstice, HONx's multiplier rose only 1.10% on 2025-10-30. What did that step cover, and how were HONx holders credited for the Solstice shares? Will Honeywell Aerospace (HONAx) be handled the same way?
 

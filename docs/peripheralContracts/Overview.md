@@ -1,54 +1,63 @@
-# Poppie v2 on Arbitrum: Overview (peripheral-contract design)
+# Peripheral-contract design: Overview
 
-*Nov 16, 2026. Shared plan: `docs/Overview.md`. Plan: `docs/peripheralContracts/Poppie-Arbitrum-Peripheral-Plan.md`. Contract specifications: `docs/peripheralContracts/Peripheral-Contracts.md`. This design is the zero-contract design (`docs/zeroContracts/Overview.md`) plus five small Poppie contracts; only the differences are listed here. Comparison: `docs/Design-Comparison.md`.*
+*Nov 16, 2026. Comparison with the alternative: `docs/Overview.md`. Full detail: `docs/peripheralContracts/Design.md`.*
 
-## What changes
+## What it is
 
-- **Core contracts unchanged.** The audited oracle and adapter, and stock Euler, are used as they are. New contracts plug into slots those contracts already expose: vault hooks, the oracle's `admin` and `keeper` slots, and the router's governor.
-- **New contracts (each optional and independent):**
+The zero-contract design (same hubs, issuers, price keeper and liquidity policy) **plus five small Poppie contracts**. They plug into slots the existing contracts already expose, so the audited oracle and the Euler contracts stay unchanged. Each contract is optional, holds no funds, and can be removed.
 
-  | Contract | Purpose |
-  | --- | --- |
-  | P1 hub guard (hook) | Limits new borrowing per hour; renewable guardian pause; sanctions screening; enforced origination fee; flash-loan policy |
-  | P2 escrow guard (hook) | Enforces issuer pause windows on-chain; guardian deposit pause; sanctions screening; optional account freeze |
-  | P3 oracle admin guard | Small price fixes instant, large ones delayed or second-approved |
-  | P4 keeper forwarder | Several keeper keys; limits how many assets a keeper can pause |
-  | P5 router governor | Listings instant; route overwrites timelocked |
+| Contract | What it adds |
+| --- | --- |
+| P1 hub guard | Hourly borrow limit; renewable pause; sanctions blocking; enforced origination fee |
+| P2 escrow guard | Issuer maintenance windows and sanctions enforced on-chain; optional account freeze |
+| P3 oracle admin guard | Small price fixes instant, large ones delayed or second-approved |
+| P4 keeper forwarder | Several keeper keys; a cap on how many prices one key can pause |
+| P5 router governor | New listings instant; changes to existing price routes delayed |
 
-## Control
+## How risk is controlled
 
-| Who | Controls | Bounded by |
+| Who | Can do | Limited by |
 | --- | --- | --- |
-| Keeper keys | Price pushes, asset pauses | The oracle's limits; at most N pauses per day (P4) |
-| Guardian key | Pause borrows and deposits; cancel queued oracle changes; revoke keepers | Tighten only |
-| Scheduler, denylist keys | Issuer pause windows; blocked addresses | Add only, bounded |
-| Emergency, cap steward keys | As in the zero-contract design | Euler |
-| Oracle Safe | Prices and oracle settings | ±X% per call instant; larger moves delayed or second-approved (P3) |
-| Ops Safe | Hubs, LTVs, caps, listings | Its signers; route overwrites delayed (P5); can uninstall the hooks |
-| Reserve Safe | Repays bad debt | Its signers |
+| Price keepers (automated) | Push prices; pause up to N names per day | Oracle move limits; P4 |
+| Guardian key (on call) | Pause borrowing and deposits; cancel queued oracle changes; revoke keepers | Can only tighten |
+| Emergency and cap steward keys | As in the zero-contract design | Euler |
+| Oracle multisig | Prices and oracle settings | ±X% instant; larger moves delayed (P3) |
+| Ops multisig | Hubs, LTVs, caps, listings | Its signers; route overwrites delayed (P5); can remove the hooks |
 
-## What it buys over the zero-contract design
+**What bounds a loss:** an hourly borrow limit per hub, plus the same caps, LTV buffers, price checks and loss reserve as the zero-contract design. Repay and liquidation are never blocked by a Poppie contract.
 
-- **Fast attacks are bounded by an hourly borrow limit**, so borrow caps don't have to sit just above borrows and be raised every day.
-- **A compromised Oracle Safe can no longer set any price instantly**, while small corrections stay instant.
-- **A stolen keeper key can no longer wipe every price.**
-- **Sanctioned addresses are blocked on-chain**, including direct callers; an account freeze is available if counsel requires it.
-- **The origination fee is enforced**, not only charged by the SDK.
-- **Issuer pause windows are enforced on-chain.**
-- **Listings stay instant while route overwrites are delayed.**
+## Pros
 
-## What it costs
+- **A compromised oracle multisig is bounded**, while small fixes stay instant.
+- **Fast attacks are capped per hour**, without daily cap raises or "cap reached" errors.
+- A stolen keeper key can't wipe every price.
+- Sanctions, the origination fee and issuer maintenance windows are enforced on-chain, for direct callers too.
+- An account freeze is available if counsel requires one.
 
-- About five small contracts to write, test and audit; launch waits for them, or they are added after a zero-contract launch.
-- A Poppie hook in the borrow and deposit path: a bug can block borrowing or deposits until it's uninstalled, which also removes its protection. Repay and liquidation are never hooked.
-- Every borrow must be batched with the fee borrow (the SDK does this); direct `borrow` calls revert while a fee is set.
-- More keys to secure: guardian, scheduler, denylist.
-- The more Poppie can block, the more it may be expected to block.
+## Cons
+
+- About five contracts to write, test and audit.
+- A bug in a Poppie hook can block borrowing or deposits until the hook is removed, which also removes its protection.
+- Every borrow must be batched with the fee (the SDK does this).
+- More keys to secure.
+- The more Poppie can block, the more it may be expected to block (court orders, regulators).
+
+## Costs
+
+| Item | Estimate |
+| --- | --- |
+| New contract audit | **TBD**: about 5 contracts of roughly 100–250 lines, plus their Euler integration |
+| Engineering | Zero-contract work plus the 5 contracts: **TBD** |
+| Launch delay | **TBD**, or none if the contracts are added after a zero-contract launch |
+| Running cost | Slightly more gas per borrow, deposit and price push |
 
 ## Still not possible
 
-Seizing or returning funds; bounding issuer powers beyond caps; pricing borrowing and liquidation differently; liquidating a stale name; catching an attacker before they're listed; stopping the Ops Safe from changing vault settings or uninstalling the hooks.
+Seizing or returning funds; limiting issuer powers beyond caps; liquidating a name while its market is closed; catching an attacker before they're listed; stopping the ops multisig from changing vault settings or removing the hooks.
 
-## Unchanged
+## Open items
 
-Issuers, keeper and prices, liquidity policy, hubs, Earn, rollout: as in the zero-contract design. Risk metrics: `docs/Risk-Metrics.md`.
+1. Which contracts to build, and when (audit budget).
+2. Settings: the hourly borrow limit per hub, the oracle's instant band (±X%) and delay, the keeper pause budget, fee rates.
+3. Whether an account freeze should exist (legal).
+4. Everything open in the zero-contract design.

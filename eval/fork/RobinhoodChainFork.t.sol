@@ -7,7 +7,7 @@ pragma solidity 0.8.24;
 //   ROBINHOOD_RPC_URL=https://rpc.mainnet.chain.robinhood.com FOUNDRY_PROFILE=eval forge test --match-path 'eval/fork/Robinhood*'
 //
 // Addresses and roles were read on-chain on 2026-11-04 (block ~106.0M); see
-// docs/EVAL_FINDINGS.md (RH-*). Robinhood has said the tokens may come to
+// docs/issuerResearch/Robinhood.md (RH-*). Robinhood has said the tokens may come to
 // Arbitrum One; these tests check the token design, not that deployment.
 
 import {Test} from "forge-std/Test.sol";

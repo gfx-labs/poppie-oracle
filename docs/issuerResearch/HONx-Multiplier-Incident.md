@@ -16,7 +16,7 @@ Backed's updater EOA scheduled HONx's multiplier to exactly half its value with 
 - The reset value is **2.44% below** the pre-halving value (0.99907 vs 1.02409). Neither step matches a corporate action we know of. Honeywell Aerospace (HONAx) was only listed on 2026-10-28.
 - Notice was about 5 minutes, below the 15-minute minimum and the 2-hour norm Backed described. Activation at 15:30 UTC is also outside Backed's documented 00:30 UTC slot.
 
-**Correction to earlier notes.** `MultiplierUpdated` is emitted lazily, on the first token interaction after activation. That is why logs show the reset on 2026-07-09 (Ethereum) and 2026-07-26 (Arbitrum). Those are not activation times. The multiplier in effect follows the activation timestamp. EVAL_FINDINGS XS-13 and XS-14 have been corrected.
+**Correction to earlier notes.** `MultiplierUpdated` is emitted lazily, on the first token interaction after activation. That is why logs show the reset on 2026-07-09 (Ethereum) and 2026-07-26 (Arbitrum). Those are not activation times. The multiplier in effect follows the activation timestamp. XS-13 and XS-14 (`docs/issuerResearch/xStocks.md`) have been corrected.
 
 ## Contracts
 
@@ -55,7 +55,7 @@ Reality's rHON token on Arbitrum shows a halving on the same day:
 - **Steps:** its registry recorded a 2→1 reverse split for HON, effective 2026-06-29 04:00 UTC. It was executed twice, at 04:00 ([tx](https://arbiscan.io/tx/0x420ecbf33e769be52ca185d41b0336c9d0032ef9fe7f7d1df23ff6f9fe84caea)) and at 10:49 ([tx](https://arbiscan.io/tx/0x579f164b6dbf245d056b67b0ef86dd589e31a8e8e7fce79236390cf33421fc29)). That is a cumulative 4→1, and it was never reversed. The 2026-10-17 migration carried it into rHON's multiplier as 0.25.
 - **Comparison:** xStocks' HONx ended the day near its old value (now 1.0012), so the two issuers disagree by 4×. Neither matches a Honeywell event we can confirm.
 - **Exposure:** rHON's supply is 0.001 tokens, so no one is exposed.
-- **What this suggests:** something in the Honeywell data feed that day produced a 2:1 factor at both issuers. We have not confirmed that. See EVAL_FINDINGS RE-4 and `docs/issuerResearch/Reality-Questions.md` Q7.
+- **What this suggests:** something in the Honeywell data feed that day produced a 2:1 factor at both issuers. We have not confirmed that. See RE-4 (`docs/issuerResearch/Reality.md`) and `docs/issuerResearch/Reality-Questions.md` Q7.
 
 ## What it would have done to Poppie
 
@@ -101,4 +101,4 @@ HONx isn't listed on BSC. The question is what would happen if Ondo's multiplier
 - The team is alerted within one push cycle by the Alpha Vantage check. Until the halved price passes, the monitor's rejected-price error also fires. Nothing stops the push automatically, so the exposure lasts until someone acts.
 - The correct post-reset price exceeds every breaker. The keeper drops it, and the halved price stays until it goes stale (1 h) or the Safe calls `adminSetPrice`.
 - In v2 the keeper's multiplier gate would skip the halved price: the change matches no corporate action. Its stock-price gate compares stock to stock, so it would not see this error (see the plan's "Price sources and cross-check").
-- The v2 keeper prototype replays this on an Arbitrum fork (`TestRogueHalving`, EVAL_FINDINGS KEEP-11). The halving is skipped and paged on every run, because Backed's API reports the same value and only the corporate-action calendar flags it. The real reset landed 2.44% below the earlier value, so the keeper would keep skipping HONx until someone adds a manual approval to the calendar.
+- The v2 keeper prototype replays this on an Arbitrum fork (`TestRogueHalving`, KEEP-11 in `docs/evaluation/Keeper.md`). The halving is skipped and paged on every run, because Backed's API reports the same value and only the corporate-action calendar flags it. The real reset landed 2.44% below the earlier value, so the keeper would keep skipping HONx until someone adds a manual approval to the calendar.

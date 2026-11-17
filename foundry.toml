@@ -21,7 +21,7 @@ runs = 256
 runs = 256
 depth = 32
 
-# ── Arbitrum evaluation suites (docs/EVAL_FINDINGS.md) ─────────────────
+# ── Arbitrum evaluation suites (docs/evaluation/Contracts.md) ──────────────
 # The default profile above is the audited build and is unchanged. The eval
 # suites live outside `test/` so `forge test` never compiles them.
 #

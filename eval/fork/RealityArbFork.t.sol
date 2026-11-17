@@ -6,7 +6,7 @@ pragma solidity 0.8.24;
 //   ARBITRUM_RPC_URL=<archive-capable RPC> FOUNDRY_PROFILE=eval forge test --match-path 'eval/fork/Reality*'
 //
 // The token source is unverified. Selectors, roles and behaviour were read and
-// simulated on-chain on 2026-11-05 (block ~521.34M); see docs/EVAL_FINDINGS.md
+// simulated on-chain on 2026-11-05 (block ~521.34M); see docs/issuerResearch/Reality.md
 // (RE-*). Three selectors have no public signature and are named here by what
 // simulation shows:
 //   0xe5839443 executeAction(bytes32 id, uint256 fromShares, uint256 toShares)

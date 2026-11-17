@@ -2,7 +2,7 @@
 pragma solidity 0.8.24;
 
 // Reality rTokens (Bitget) as collateral with the unmodified v1 oracle and
-// adapter and the stock EulerRouter. See docs/EVAL_FINDINGS.md (RE-*). The
+// adapter and the stock EulerRouter. See docs/issuerResearch/Reality.md (RE-*). The
 // token is held directly by the escrow (no wrapper) and is the oracle base.
 // The EVK escrow is stood in for by an OZ ERC4626 and by a model of EVK's
 // internal cash accounting (CashTrackingEscrow, shared with the Robinhood

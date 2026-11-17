@@ -4,7 +4,7 @@ pragma solidity 0.8.24;
 // ─────────────────────────────────────────────────────────────────────────
 // TEST-ONLY PROTOTYPE. NOT AUDITED. NOT FOR DEPLOYMENT.
 // Exists to check that the "small additional contract" in
-// docs/EVAL_FINDINGS.md (DIV-1) works with the unmodified v1 oracle and
+// docs/evaluation/Contracts.md (DIV-1) works with the unmodified v1 oracle and
 // adapter and with EulerRouter. A production version needs its own spec,
 // review and audit.
 // ─────────────────────────────────────────────────────────────────────────

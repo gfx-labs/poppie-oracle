@@ -2,7 +2,7 @@
 pragma solidity 0.8.24;
 
 // Robinhood Stock Tokens (ERC-8056) as collateral with the unmodified v1
-// oracle and adapter and the stock EulerRouter. See docs/EVAL_FINDINGS.md
+// oracle and adapter and the stock EulerRouter. See docs/issuerResearch/Robinhood.md
 // (RH-*). The token is held directly by the escrow (no wrapper) and is the
 // oracle base. The EVK escrow is stood in for by an OZ ERC4626, except in the
 // burn test, which also uses a model of EVK's internal cash accounting.

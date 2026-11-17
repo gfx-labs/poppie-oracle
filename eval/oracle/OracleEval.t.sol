@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
 
-// Evaluation tests for docs/EVAL_FINDINGS.md, section A. They exercise the
+// Evaluation tests for docs/evaluation/Contracts.md, section A. They exercise the
 // unmodified v1 oracle and adapter and compile under the audited settings
 // (FOUNDRY_PROFILE=eval-oracle) as well as the full eval profile.
 
