@@ -35,7 +35,7 @@ For Poppie, with no Merkl relationship (the default):
 - **Owed to depositors, not to the escrow.** Merkl traces each balance through a supported protocol to the owner of the position: for Poppie, the owner of the Euler sub-account holding the escrow shares. That owner may be an EOA, a Safe or a smart wallet. Withheld dividends would be back-paid to whoever owned each position at each record date, so the escrow never needs to claim anything.
 - **Not protocol revenue in either case.** The dividends belong to depositors, and a wrapper to capture them would go against Reality's stated policy, so we dropped the idea.
 
-**Merkl support** (optional; POP-62): Merkl already lists Euler and EulerEarn as protocols, but we found no public sign of Reality snapshots covering them. Details: RE-9.
+**Merkl support** (optional; POP-60): Merkl already lists Euler and EulerEarn as protocols, but we found no public sign of Reality snapshots covering them. Details: RE-9.
 
 ## Applies to every issuer
 

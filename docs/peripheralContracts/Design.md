@@ -121,7 +121,7 @@ Issuers pause assets on-chain for scheduled operations. Example: Ondo pauses wit
 
 ## Contracts Poppie deploys on Arbitrum
 
-Five Poppie peripheral contracts are deployed (P1–P5). They are new, immutable and to be audited; specifications under "Contract specifications". Euler's governance contracts are used as published at the `evk-periphery` pin (audit coverage at that pin: POP-90).
+Five Poppie peripheral contracts are deployed (P1–P5). They are new, immutable and to be audited; specifications under "Contract specifications". Euler's governance contracts are used as published at the `evk-periphery` pin (audit coverage at that pin: POP-17).
 
 | Contract | Code | Count | Controlled by |
 | --- | --- | --- | --- |
@@ -212,7 +212,7 @@ Whoever holds the vault governance roles can still change every setting, includi
 
 | Need | Mechanism | Who | Instant | Side effects |
 | --- | --- | --- | --- | --- |
-| Stop new deposits of a name | P2 guardian pause (extend-only, each ≤ `maxPauseDuration`); or escrow supply cap to current supply | Guardian, emergency key or `MS_OPS` | Yes | Withdrawals and liquidations unaffected (EVK verification: POP-35) |
+| Stop new deposits of a name | P2 guardian pause (extend-only, each ≤ `maxPauseDuration`); or escrow supply cap to current supply | Guardian, emergency key or `MS_OPS` | Yes | Withdrawals and liquidations unaffected (EVK verification: POP-33) |
 | Stop new borrowing against a name | Borrow LTV lowered | Emergency key or `MS_OPS` | Yes | At 0, indebted accounts using it freeze |
 | Stop new borrowing in a hub | P1 guardian pause (renewable, extend-only, each ≤ `maxPauseDuration`); or borrow cap to current borrows | Guardian, emergency key or `MS_OPS` | Yes | Repay and liquidation continue |
 | Limit borrowing speed | P1 hourly borrow limit | Always on | — | Large borrows split across hours |
@@ -409,7 +409,7 @@ In addition to the alerts in the zero-contract design (its "Oracle admin" alert 
 
 | Phase | Scope | Gate to next phase |
 | --- | --- | --- |
-| 0 | Keeper extended from BSC (multiplier and stock-price gates, per-issuer rules, chunking): **prototyped** on an Arbitrum fork against the real xStocks contracts (KEEP-2 to KEEP-22); remaining keeper work: POP-29. Fork test that a third party can liquidate through Enso (liquidate, unwrap, sell, repay): POP-69. EVK harness and Arbitrum fork tests: stale-price and cap behaviour, Earn accepting the hubs, 300+ LTV entries in one hub, `ProtocolConfig` values (POP-39 to POP-42). (A real xStocks multiplier change through the router and adapter already passes: `eval/fork/`). P1–P5: **written**, with unit and invariant tests on mocks (`MockVault`, `MockEVC`) and 5 Arbitrum fork tests pinned at block 525105000 (P1 against the real Chainalysis list and a real EVC deployed on the fork, with a mock hub; P3 with the audited oracle and adapter pricing a real xStock). EVK integration (EVK isn't in the repo yet): POP-33 to POP-36. Audit: POP-17 | All pass; audit findings closed; issuer questions answered; exit route confirmed per name |
+| 0 | Keeper extended from BSC (multiplier and stock-price gates, per-issuer rules, chunking): **prototyped** on an Arbitrum fork against the real xStocks contracts (KEEP-2 to KEEP-22); remaining keeper work: milestone D. Fork test that a third party can liquidate through Enso (liquidate, unwrap, sell, repay): POP-68. EVK harness and Arbitrum fork tests: stale-price and cap behaviour, Earn accepting the hubs, 300+ LTV entries in one hub, `ProtocolConfig` values (POP-33, POP-12). (A real xStocks multiplier change through the router and adapter already passes: `eval/fork/`). P1–P5: **written**, with unit and invariant tests on mocks (`MockVault`, `MockEVC`) and 5 Arbitrum fork tests pinned at block 525105000 (P1 against the real Chainalysis list and a real EVC deployed on the fork, with a mock hub; P3 with the audited oracle and adapter pricing a real xStock). EVK integration (EVK isn't in the repo yet): POP-33. Audit: POP-17 | All pass; audit findings closed; issuer questions answered; exit route confirmed per name |
 | 1 (~100 assets) | Prime hub plus 3 band hubs; both Earn vaults | Check script passes; alerts live |
 | 2 (→ 500 assets) | More names; more hubs per band if needed | — |
 
@@ -425,9 +425,9 @@ These replace D5, D6, D8 and D13–D17 of the zero-contract design and add D19. 
 | D6 | `adminSetPrice` | Oracle Safe through P3: within ±X% instant; larger moves delayed or second-approved; on-call signer rota |
 | D8 | Issuer pause windows | On-chain through P2, plus app and SDK; alerts matched to schedules |
 | D13 | Oracle admin | Decided: P3, with second-Safe approval of queued `adminSetPrice`. Instant band ±X% and delay: POP-44 |
-| D14 | Keeper slot | Open: POP-45 |
-| D15 | Hub and escrow hooks | Open: POP-46 |
-| D16 | Origination fee | Open: POP-47 |
+| D14 | Keeper slot | Open: POP-44 |
+| D15 | Hub and escrow hooks | Open: POP-44 |
+| D16 | Origination fee | Open: POP-44 |
 | D17 | Sanctions | Open: POP-55 |
 | D19 | Contract set | Open: POP-50 |
 

@@ -39,7 +39,7 @@ USDC lending on Euler V2 (Arbitrum) against tokenized US stocks and ETFs. **Popp
 | Item | Estimate |
 | --- | --- |
 | New contract audit | None |
-| Engineering | Deployment scripts, keeper extension (prototyped), monitoring; estimate: POP-89 |
+| Engineering | Deployment scripts, keeper extension (prototyped), monitoring; estimate: POP-17 |
 | Running cost | Keeper about 0.00009 ETH per run (71 names) |
 | Operations | Daily cap raises; an on-call rota for oracle fixes |
 
