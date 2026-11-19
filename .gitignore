@@ -12,3 +12,5 @@ broadcast/
 *.swp
 src/vendor/soljson-latest.js
 src/soljson-latest.js
+
+node_modules
