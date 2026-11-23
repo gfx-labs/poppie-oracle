@@ -82,7 +82,7 @@ Sources (Reality: press only; its docs are geo-blocked): https://www.bitget.com/
 | Reinvested (multiplier or total return) | xStocks, Robinhood, Ondo, Dinari wrapped | None; value goes to depositors through the share price | No |
 | Stablecoins pushed to holder | Dinari raw dShare (if the contract is KYC-registered) | Dividend-capture wrapper, `sweep` to the reserve | Yes |
 | Must be claimed by holder | Any issuer with a claim distributor | Dividend-capture wrapper, `claim` then `sweep` | Yes |
-| Attributed to the depositor through supported protocols (Merkl snapshot); withheld for unsupported ones | Reality (USDT0 and stock rTokens) | None in the contracts. Withheld by Reality unless Merkl supports Poppie's escrows (POP-60) | No (belongs to depositors) |
+| Attributed to the depositor through supported protocols (Merkl snapshot); withheld for unsupported ones | Reality (USDT0 and stock rTokens) | None in the contracts. Withheld by Reality unless Merkl supports Poppie's escrows (POP-72) | No (belongs to depositors) |
 | Pushed to a plain escrow or OZ wrapper | — | Lost (stuck) | No; do not list this way |
 
 Using captured dividends in borrow parameters: EVK has no per-collateral rate, so a dividend cannot lower a specific borrower's rate on-chain without more contracts. Off-chain uses:

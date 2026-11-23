@@ -48,9 +48,9 @@ The zero-contract design (same hubs, issuers, price keeper and liquidity policy)
 
 | Item | Estimate |
 | --- | --- |
-| New contract audit | About 5 contracts of roughly 100–300 lines, plus their Euler integration; cost not yet estimated (POP-17) |
-| Engineering | Zero-contract work plus the 5 contracts; estimate: POP-17 |
-| Launch delay | Estimate: POP-17; none if the contracts are added after a zero-contract launch |
+| New contract audit | About 5 contracts of roughly 100–300 lines, plus their Euler integration; cost not yet estimated (POP-50) |
+| Engineering | Zero-contract work plus the 5 contracts; estimate: POP-50 |
+| Launch delay | Estimate: POP-33; none if the contracts are added after a zero-contract launch |
 | Running cost | Slightly more gas per borrow, deposit and price push |
 
 ## Still not possible

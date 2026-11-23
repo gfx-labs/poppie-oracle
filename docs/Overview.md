@@ -54,9 +54,9 @@ Both designs reuse Poppie's audited BSC oracle unchanged and the standard Euler 
 
 | | Zero-contract | Peripheral-contract |
 | --- | --- | --- |
-| Contract audit | None (oracle and adapter already audited) | About 5 small contracts plus their Euler integration; cost not yet estimated (POP-17) |
-| Engineering | Deployment scripts, keeper, monitoring | The same, plus writing and testing 5 contracts; estimate: POP-17 |
-| Launch delay | None | Estimate: POP-17; none if contracts are added after launch |
+| Contract audit | None (oracle and adapter already audited) | About 5 small contracts plus their Euler integration; cost not yet estimated (POP-50) |
+| Engineering | Deployment scripts, keeper, monitoring | The same, plus writing and testing 5 contracts; estimate: POP-50 |
+| Launch delay | None | Estimate: POP-50; none if contracts are added after launch |
 | Running cost | Keeper about 0.00009 ETH per run at today's gas (71 names) | Slightly more gas per borrow, deposit and price push |
 | Operations | Daily automated cap raises; large oracle fixes need the full oracle multisig | No daily raises; small oracle fixes instant; more keys to hold |
 
