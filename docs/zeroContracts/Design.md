@@ -118,7 +118,7 @@ Flash loans of hub USDC: on and free at launch, so third-party liquidators need 
 | Interest fee | 10% | 15% | 20% | 25% | [Euler]: 10–100% is always allowed |
 | Rate floor (IRM base rate) | 2% | 3% | 4% | 5% | [Euler]: Kink IRM parameters |
 
-- **Euler's protocol share:** EVK sends up to 50% of the interest fee to Euler's protocol receiver (`ProtocolConfig`). The Arbitrum value is not yet read (POP-12).
+- **Euler's protocol share:** EVK sends up to 50% of the interest fee to Euler's protocol receiver (`ProtocolConfig`). On Arbitrum it is 0% today (read on a fork 2026-11-23), but Euler can raise it up to the 50% cap. A hub with no fee receiver sends 100% of the interest fee to Euler, so every hub must have `setFeeReceiver` set.
 - **Earn fees:** Prime Earn charges a 5% performance fee and Yield Earn 10% **[Euler]**.
 - **Prime Earn allocation:** at least 70% in the Prime hub, by policy **[Policy]**.
 - **Origination fee:** see "Flash loans and fees".
@@ -683,7 +683,7 @@ There is no on-chain notice period unless D12 is timelocked, in which case each 
 
 | Phase | Scope | Gate to next phase |
 | --- | --- | --- |
-| 0 | Keeper extended from BSC (multiplier and stock-price gates, per-issuer rules, chunking): **prototyped** on an Arbitrum fork against the real xStocks contracts (KEEP-2 to KEEP-22); remaining keeper work: milestone D. Fork test that a third party can liquidate through Enso (liquidate, unwrap, sell, repay): POP-68. EVK harness and Arbitrum fork tests: stale-price and cap behaviour, Earn accepting the hubs, 300+ LTV entries in one hub, `ProtocolConfig` values (POP-33, POP-12). (A real xStocks multiplier change through the router and adapter already passes: `eval/fork/`) | All pass; issuer questions answered; exit route confirmed per name |
+| 0 | Keeper extended from BSC (multiplier and stock-price gates, per-issuer rules, chunking): **prototyped** on an Arbitrum fork against the real xStocks contracts (KEEP-2 to KEEP-22); remaining keeper work: milestone D. Fork test that a third party can liquidate through Enso (liquidate, unwrap, sell, repay): POP-68. EVK harness and Arbitrum fork tests of stale-price and cap behaviour: POP-33. Earn accepting the hubs, 300+ LTV entries in one hub, and the `ProtocolConfig` values are checked (`test-peripheral/fork/EulerForkChecks.t.sol`). (A real xStocks multiplier change through the router and adapter already passes: `eval/fork/`) | All pass; issuer questions answered; exit route confirmed per name |
 | 1 (~100 assets) | Prime hub plus 3 band hubs; both Earn vaults | Check script passes; alerts live |
 | 2 (→ 500 assets) | More names; more hubs per band if needed | — |
 
@@ -694,7 +694,7 @@ The peripheral design overrides D5, D6, D8 and D13–D17. D19 (which peripheral 
 | ID | Decision | Status |
 | --- | --- | --- |
 | D1 | Closed markets | Decided: one rule (push when a reliable price exists, else stale) |
-| D2 | Revenue model | Interest fee, rate floor, Earn fees; Euler's `ProtocolConfig` share: POP-12 |
+| D2 | Revenue model | Interest fee, rate floor, Earn fees; Euler's `ProtocolConfig` share is 0% on Arbitrum today; every hub needs a fee receiver |
 | D3 | Unmodified OZ `ERC4626` wrappers | Only where the issuer has none |
 | D4 | Cash-dividend issuers | Decided: not at launch |
 | D5 | Listing | Decided: instant, by `MS_OPS` (waits for the delay if D12 is timelocked) |
@@ -721,7 +721,7 @@ Ranked by likely impact. The peripheral design keeps items 1–6, changes 7–9 
 3. **xStocks pricing depends on one Backed EOA.** The `multiplierUpdater` is a single key that can set any multiplier instantly; a wrong multiplier changes the equity each wrapper share represents. It is an automated hot key with no on-chain bound on size or notice. The keeper alerts instead of pushing on unexplained changes, but users' wrapper balances already reflect it.
 4. **Robinhood keys can burn from any holder and set any multiplier.** Two EOAs can burn tokens from a Poppie escrow; one EOA can set any multiplier instantly, and SOXX's 3:1 split was applied a day early on 2026-11-04, reverted within three hours, and re-applied on 11-05. Burns are accepted as issuer risk and capped; the keeper follows only explained multiplier changes.
 5. **Corporate actions outside the multiplier are discretionary, and wrapper holders must exit first.** Backed handles mergers, spin-offs and delistings case by case, with no committed notice. Payouts do not reach V2 wrapper holders: holders must unwrap. So Poppie must wind a name down, and every position must be closed or liquidated, before Backed's deadline. Open: POP-57.
-6. **Earn may not accept the hubs** (`EulerEarnFactory.isStrategyAllowed`, `b2fd6e6`; fallback: lenders deposit into hubs directly). Open: POP-12.
+6. ~~**Earn may not accept the hubs**~~ Resolved: a hub from the canonical factory passes `EulerEarnFactory.isStrategyAllowed` on an Arbitrum fork, with or without P1 installed (`test-peripheral/fork/EulerForkChecks.t.sol`). Euler controls the perspective and could change it.
 7. **Gaps beyond the breaker are routine at scale.** Each one leaves a name stale until the Oracle Safe signs `adminSetPrice`, and they cluster at Monday opens and earnings. An on-call signer rota is required (POP-87).
 8. **`MS_OPS` signing load.** It signs every risk change and every corporate action, so fatigue is a real risk. Every batch is reviewed decoded and simulated.
 9. **Single admin and keeper for all names.** One incident affects every asset. Accepted for simplicity (D7).
