@@ -66,6 +66,13 @@ contract HubGuardUnitTest is P1Base {
         g.setHub(address(hub), LIMIT, WINDOW, 10, feeRcv, 2);
     }
 
+    /// @dev A zero window would reset the count every batch, turning the hourly limit into a per-batch one.
+    function test_setHub_zeroWindow_reverts() public {
+        vm.prank(ops);
+        vm.expectRevert(HubGuard.InvalidConfig.selector);
+        g.setHub(address(hub), LIMIT, 0, 0, address(0), 1);
+    }
+
     function test_onlyOwnerSetsHub() public {
         vm.expectRevert(HubGuard.Unauthorized.selector);
         g.setHub(address(hub), LIMIT, WINDOW, 0, address(0), 1);

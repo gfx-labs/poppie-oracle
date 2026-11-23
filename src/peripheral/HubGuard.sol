@@ -181,7 +181,8 @@ contract HubGuard {
         only(owner)
     {
         if (hub == address(0)) revert ZeroAddress();
-        if (feeBps > MAX_FEE_BPS || flashMode > FLASH_ON || (feeBps != 0 && feeReceiver == address(0))) {
+        // window == 0 would reset `used` on every batch, silently making the limit per batch.
+        if (window == 0 || feeBps > MAX_FEE_BPS || flashMode > FLASH_ON || (feeBps != 0 && feeReceiver == address(0))) {
             revert InvalidConfig();
         }
         Cfg storage c = cfg[hub];

@@ -161,6 +161,12 @@ contract P3Handler is Test {
         vm.stopPrank();
     }
 
+    /// @dev POP-37: the second Safe can never appoint the guardian, itself or anyone else.
+    function secondSafeOverreach(bool self) external {
+        vm.prank(second);
+        try g.setGuardian(self ? second : address(0xBEEF)) { violations++; } catch {}
+    }
+
     function warp(uint256 dt) external {
         vm.warp(block.timestamp + bound(dt, 1, 3 days));
     }

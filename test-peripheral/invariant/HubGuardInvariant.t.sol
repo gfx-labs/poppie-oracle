@@ -162,7 +162,9 @@ contract HubGuardInvariantTest is P1Base {
         bytes calldata junk
     ) public {
         vm.prank(ops);
-        g.setHub(address(hub), limit, window, uint16(bound(fee, 0, 100)), feeRcv, flash ? 1 : 0);
+        g.setHub(
+            address(hub), limit, uint32(bound(window, 1, type(uint32).max)), uint16(bound(fee, 0, 100)), feeRcv, flash ? 1 : 0
+        );
         vm.prank(guardian);
         g.pause(address(hub), bound(pauseFor, 0, 7 days));
         hub.setTotalBorrows(tb);

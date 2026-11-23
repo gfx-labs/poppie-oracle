@@ -118,14 +118,40 @@ contract OracleAdminGuardQueueTest is P3Base {
     }
 
     // ── A6: role replacement ──
-    function test_setGuardian_instant_bySafeOrSecond() public {
+    function test_setGuardian_instant_bySafe() public {
         address g2 = makeAddr("g2");
         vm.prank(safe);
         g.setGuardian(g2);
         assertEq(g.guardian(), g2);
-        vm.prank(second);
+        vm.prank(safe);
         g.setGuardian(guardian);
         assertEq(g.guardian(), guardian);
+    }
+
+    // POP-37: the second Safe must not take the guardian role, or it could cancel its own replacement.
+    function test_setGuardian_bySecondSafe_reverts() public {
+        vm.prank(second);
+        vm.expectRevert(OracleAdminGuard.Unauthorized.selector);
+        g.setGuardian(second);
+        vm.prank(second);
+        vm.expectRevert(OracleAdminGuard.Unauthorized.selector);
+        g.setGuardian(makeAddr("g2"));
+        assertEq(g.guardian(), guardian);
+    }
+
+    // POP-37 scenario: a compromised second Safe cannot block its own queued replacement.
+    function test_compromisedSecondSafe_cannotBlockReplacement() public {
+        bytes memory d = abi.encodeCall(OracleAdminGuard.setSecondSafe, (makeAddr("s2")));
+        bytes32 id = keccak256(abi.encode(address(g), d));
+        vm.prank(safe);
+        g.submit(address(g), d);
+        vm.startPrank(second);
+        vm.expectRevert(OracleAdminGuard.Unauthorized.selector);
+        g.setGuardian(second);
+        vm.expectRevert(OracleAdminGuard.Unauthorized.selector);
+        g.cancel(id);
+        vm.stopPrank();
+        assertTrue(g.eta(id) != 0);
     }
 
     function test_setGuardian_byGuardian_reverts() public {

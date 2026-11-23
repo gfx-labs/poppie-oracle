@@ -138,9 +138,9 @@ contract OracleAdminGuard {
     }
 
     /// @notice Instant guardian replacement, so a rogue guardian cannot block its own removal (A6).
-    function setGuardian(address g) external {
-        // Known gap (second Safe can self-appoint): docs/peripheralContracts/Open-Items.md
-        if (msg.sender != safe && msg.sender != secondSafe) revert Unauthorized();
+    /// @dev Oracle Safe only. The second Safe must not appoint the guardian: as guardian it could
+    ///      cancel its own queued `setSecondSafe` replacement (POP-37).
+    function setGuardian(address g) external only(safe) {
         if (g == address(0)) revert ZeroAddress();
         _setRole("guardian", g);
     }
